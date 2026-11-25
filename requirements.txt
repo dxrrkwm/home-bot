@@ -1,0 +1,3 @@
+cryptography
+pycryptodome
+paho-mqtt>=2,<3

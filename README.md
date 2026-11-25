@@ -11,6 +11,9 @@ Standard library only, except `cryptography` (lamp), `pycryptodome` (station) an
 python bot.py
 ```
 
+It can also run on a second, always-on PC while the laptop keeps the lamp and the power modes:
+see [docs/hub.md](docs/hub.md).
+
 In production it is started by `watchdog.ps1` (Windows Task Scheduler, every 3 min): it restarts the bot
 if the process is gone, the heartbeat is older than 6 minutes or memory goes over 500 MB.
 
@@ -23,10 +26,17 @@ app/
   router.py            update -> feature, aliases, background ticks
   telegram.py          bot api, Ctx.send (can be redirected to the panel), outbox for messages sent without internet
   keyboards.py         buttons and menus
-  panel.py             mini app bridge over ntfy, encrypted answers
+  panel.py             mini app commands and answers
+  relay.py             mqtt (public broker) and ntfy, sealed with the panel key
+  role.py              standalone / hub / agent
+  link.py              hub <-> laptop agent: state, calls, hub beat
+  agent.py             laptop side when the bot runs on the hub, covers for the hub when it is down
+  devices.py           laptop and lamp: local or through the agent
+  sync.py              state files follow the running bot through the broker
+  bundle.py            encrypted settings and state for a new hub
   config.py, paths.py, log.py
   features/            one module per feature: handle(ctx, text) -> bool, optional start() and tick(ctx)
-  services/            integrations without telegram: lamp, mono, station, outage, pills, planner, powerlog, prices
+  services/            integrations without telegram: laptop, lamp, mono, station, outage, pills, planner, powerlog, prices
 ```
 
 ## Power station modes

@@ -3,7 +3,7 @@ import socket
 import threading
 import time
 
-from app.features import laptop
+from app import devices
 from app.features import station as st
 from app.log import log
 from app.services import powerlog, station
@@ -13,7 +13,7 @@ SAMPLE_SEC = 60
 PLUG_WAIT_SEC = 4 * 60
 STALE_SEC = 180  # older station data is not a sample of now
 
-_state = {"ac": laptop.power()[0], "low_sent": False, "sampled": 0, "net": None}
+_state = {"ac": None, "low_sent": False, "sampled": 0, "net": None}
 
 
 def _internet() -> bool:
@@ -33,9 +33,9 @@ def _sample(ac: bool, pct: int | None) -> None:
     s = st.monitor.last
     fresh = bool(s) and time.time() - s["ts"] < STALE_SEC
     fields = {
-        "laptop_ac": int(ac),
+        "laptop_ac": None if ac is None else int(ac),
         "laptop_pct": pct,
-        "eco": int(laptop.is_eco()),
+        "eco": int(devices.is_eco()),
         "net": int(net),
         "ups": int(st.monitor.ups),
     }
@@ -66,8 +66,7 @@ def on_ac_lost(ctx: Ctx, pct: int | None) -> None:
         return
     msg = f"⚫ Ноут перейшов на батарею ({pct}%). Світло зникло?"
     inline = None
-    if ctx.cfg.get("station_auto_eco", True) and not laptop.is_eco():
-        laptop.run_mode("eco")
+    if ctx.cfg.get("station_auto_eco", True) and not devices.is_eco() and devices.switch("eco"):
         msg += "\n🔋 Увімкнув Еко."
         inline = [[{"text": "⚡ Повернути звичайний", "callback_data": "normal"}]]
     if station.configured():
@@ -99,20 +98,19 @@ def on_ac_back(ctx: Ctx) -> None:
         return
     # either power is back or the laptop was plugged into the station
     s = _station_after_plug() if station.configured() else None
-    if station.configured() and s is None and laptop.is_eco():
+    if station.configured() and s is None and devices.is_eco():
         ctx.send(
             "🔌 Ноут знову живиться, але станція не відповідає — лишаю Еко.",
             inline=[[{"text": "⚡ Звичайний", "callback_data": "normal"}]],
         )
         return
     if s and station.mode_of(s) == "supply":
-        inline = None if laptop.is_eco() else [[{"text": "🔋 Увімкнути еко", "callback_data": "eco"}]]
+        inline = None if devices.is_eco() else [[{"text": "🔋 Увімкнути еко", "callback_data": "eco"}]]
         ctx.send(f"🔌 Ноут живиться від станції. {st.brief(s)}", inline=inline)
         return
     msg = "💡 Ноут знову від розетки — схоже, світло дали."
     inline = None
-    if ctx.cfg.get("station_auto_eco", True) and laptop.is_eco():
-        laptop.run_mode("normal")
+    if ctx.cfg.get("station_auto_eco", True) and devices.is_eco() and devices.switch("normal"):
         msg += "\n⚡ Повернув звичайний режим."
         inline = [[{"text": "🔋 Лишити еко", "callback_data": "eco"}]]
     if s and s.get("online") and s["pct"] < 90 and station.mode_of(s) != "charging":
@@ -121,10 +119,14 @@ def on_ac_back(ctx: Ctx) -> None:
 
 
 def tick(ctx: Ctx) -> None:
-    ac, pct = laptop.power()
+    ac, pct = devices.power()
     if time.time() - _state["sampled"] >= SAMPLE_SEC:
         _state["sampled"] = time.time()
         threading.Thread(target=_sample, args=(ac, pct), daemon=True, name="power_sample").start()
+    if ac is None:  # laptop out of reach: nothing to compare
+        return
+    if _state["ac"] is None:
+        _state["ac"] = ac
     if not ac and pct is not None and pct <= 20 and not _state["low_sent"]:
         ctx.send(
             f"🪫 Батарея ноутбука {pct}%! Підключи станцію або збережи роботу.",

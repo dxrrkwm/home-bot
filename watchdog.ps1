@@ -1,6 +1,7 @@
 # restart bot if it is dead, hung (no heartbeat) or eats too much memory
+param([string]$Python)
 $dir = $PSScriptRoot
-$python = if ($env:HOME_BOT_PYTHON) { $env:HOME_BOT_PYTHON } else { "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe" }
+$python = if ($Python) { $Python } elseif ($env:HOME_BOT_PYTHON) { $env:HOME_BOT_PYTHON } else { "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe" }
 function Write-Log($m) { Add-Content "$dir\bot.log" "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') watchdog: $m" -Encoding utf8 }
 
 $bot = Get-CimInstance Win32_Process -Filter "Name like 'python%'" | ? { $_.CommandLine -match 'bot\.py' }

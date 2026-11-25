@@ -2,6 +2,7 @@ import json
 import re
 import time
 
+from app import devices, role
 from app import keyboards as kb
 from app.paths import ROOT
 from app.telegram import Ctx
@@ -35,9 +36,7 @@ _lamp = None
 def _get():
     global _lamp
     if _lamp is None:
-        from app.services import lamp  # needs cryptography, load only when used
-
-        _lamp = lamp.robust()
+        _lamp = devices.lamp()
     return _lamp
 
 
@@ -45,17 +44,18 @@ DOWN_SEC = 45  # after a failed try answer at once for a while: a search takes ~
 _down_until = 0.0
 
 
-def _with_lamp(fn) -> None:
-    # lamp ip can change after outages, so on error reconnect once
+def with_lamp(fn):
+    # lamp ip can change after outages, so on error reconnect once (the agent does it when the lamp is remote)
     global _lamp, _down_until
     if time.time() < _down_until:
         raise RuntimeError("лампа недоступна — немає світла або Wi-Fi")
-    for attempt in range(2):
+    tries = 2 if role.HAS_DEVICES else 1
+    for attempt in range(tries):
         try:
             return fn(_get())
         except Exception:
             _lamp = None
-            if attempt:
+            if attempt == tries - 1:
                 _down_until = time.time() + DOWN_SEC
                 raise
 
@@ -80,7 +80,7 @@ def apply_action(text: str) -> None:
         if method == "rgb":
             _keep_visible(lamp)
 
-    _with_lamp(run)
+    with_lamp(run)
 
 
 def parse_custom(text: str) -> tuple[int | None, int | None] | None:
@@ -105,13 +105,13 @@ def apply_custom(rgb: int | None, bright: int | None) -> None:
         elif rgb is not None:
             _keep_visible(lamp)
 
-    _with_lamp(run)
+    with_lamp(run)
 
 
 def state() -> dict:
     # raw lamp state for the panel; rgb as "#RRGGBB" when the lamp is in color mode
     try:
-        s = _with_lamp(lambda lamp: lamp.state())
+        s = with_lamp(lambda lamp: lamp.state())
     except Exception as e:
         return {"error": str(e)}
     rgb = f"#{s['rgb']:06X}" if s.get("rgb") is not None else None
@@ -120,7 +120,7 @@ def state() -> dict:
 
 def status() -> str:
     try:
-        s = _with_lamp(lambda lamp: lamp.state())
+        s = with_lamp(lambda lamp: lamp.state())
     except Exception as e:
         return f"💡 Лампа недоступна: {e}"
     if not s["on"]:
@@ -157,13 +157,13 @@ def handle(ctx: Ctx, text: str) -> bool:
     custom = parse_custom(text) if text not in kb.BUTTONS else None
     if m := CT_RE.match(text):
         kelvin = int(m.group(1))
-        _do(ctx, lambda: _with_lamp(lambda lamp: (lamp.power(True), lamp.ct(kelvin))))
+        _do(ctx, lambda: with_lamp(lambda lamp: (lamp.power(True), lamp.ct(kelvin))))
     elif custom:
         _do(ctx, lambda: apply_custom(*custom))
     elif text == "lamp?":
         _reply(ctx, status())
     elif text == "toggle_light":
-        _do(ctx, lambda: (_with_lamp(lambda lamp: lamp.toggle()), time.sleep(0.5)))
+        _do(ctx, lambda: (with_lamp(lambda lamp: lamp.toggle()), time.sleep(0.5)))
     elif text == kb.LIGHT:
         _reply(ctx, status() + "\n\n" + HINT)
     elif text in ACTIONS:

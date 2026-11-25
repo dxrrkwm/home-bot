@@ -1,5 +1,5 @@
-# transport between the bot and the panel, no server of our own:
-# mqtt on a public broker first (no daily limits, retained state), ntfy.sh as a backup (250 messages a day per ip).
+# transport between the bot, the panel and the laptop agent, no server of our own:
+# mqtt on a public broker first (no daily limits, retained state), ntfy.sh as a backup for the panel (250 messages a day per ip).
 # everything is sealed with the key from the panel button url: commands too, so nobody else can send them.
 import base64
 import hmac
@@ -25,6 +25,7 @@ MAX_AGE_SEC = 120  # older commands are replays or stuck in a queue
 
 _local = threading.local()  # which channel the current command came from, the answer goes back the same way
 _seen = []
+_handlers = {}  # topic -> fn(message)
 _mqtt = None
 
 
@@ -54,37 +55,81 @@ def unseal(text: str):
     return json.loads(zlib.decompress(bytes(a ^ b for a, b in zip(body, _stream(key, nonce, len(body))))))
 
 
+def fresh(msg: dict) -> bool:
+    # a command {"id": ..., "ts": ms} is taken once and only while it is fresh
+    if abs(time.time() - msg.get("ts", 0) / 1000) > MAX_AGE_SEC or msg.get("id") in _seen:
+        return False
+    _seen.append(msg.get("id"))
+    del _seen[:-500]
+    return True
+
+
 def _topic(*parts: str) -> str:
     return "/".join(["hb", config.load()["panel_topic"], *parts])
 
 
+def connected() -> bool:
+    return bool(_mqtt and _mqtt.is_connected())
+
+
+def on(parts: tuple, fn) -> None:
+    # fn gets every unsealed message on hb/<topic>/<parts>, retained ones too
+    topic = _topic(*parts)
+    _handlers[topic] = fn
+    if connected():
+        _mqtt.subscribe(topic, qos=1)
+
+
+def send(parts: tuple, obj, retain: bool = False) -> None:
+    if not connected():
+        raise RuntimeError("немає зв'язку з mqtt")
+    _mqtt.publish(_topic(*parts), seal(obj), qos=1, retain=retain)
+
+
+def _on_message(client, userdata, m) -> None:
+    fn = _handlers.get(m.topic)
+    if not fn or not m.payload:
+        return
+    try:
+        msg = unseal(m.payload.decode())
+    except Exception:
+        return
+    try:
+        fn(msg)
+    except Exception as e:
+        log(f"mqtt {m.topic.rsplit('/', 1)[-1]}: {e!r}")
+
+
+def connect(will: tuple | None = None) -> None:
+    # will: (parts, obj) the broker publishes (retained) when this client drops off
+    global _mqtt
+    if _mqtt or not config.load().get("panel_topic"):
+        return
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"home-bot-{uuid.uuid4().hex[:8]}")
+    client.tls_set()
+    client.reconnect_delay_set(1, 60)
+    if will:
+        client.will_set(_topic(*will[0]), seal(will[1]), qos=1, retain=True)
+    client.on_connect = lambda c, u, flags, rc, props: [c.subscribe(t, qos=1) for t in _handlers]
+    client.on_message = _on_message
+    client.connect_async(BROKER, BROKER_PORT, keepalive=60)
+    client.loop_start()  # reconnects by itself, also after the internet comes back
+    _mqtt = client
+
+
 def publish(kind: str, obj) -> None:
-    via = getattr(_local, "via", None) or ("mqtt" if _mqtt and _mqtt.is_connected() else "ntfy")
-    payload = seal(obj)
+    # data for the panel
+    via = getattr(_local, "via", None) or ("mqtt" if connected() else "ntfy")
     if via == "mqtt":
-        _mqtt.publish(_topic("d", kind), payload, qos=1, retain=kind in RETAINED)
+        send(("d", kind), obj, retain=kind in RETAINED)
         return
     topic = config.load()["panel_topic"] + "d"
-    req = urllib.request.Request(f"{NTFY}/{topic}", data=payload.encode(), headers={**HEADERS, "Title": kind})
+    req = urllib.request.Request(f"{NTFY}/{topic}", data=seal(obj).encode(), headers={**HEADERS, "Title": kind})
     urllib.request.urlopen(req, timeout=20).close()
 
 
-def _accept(text: str) -> dict | None:
-    # a sealed {"c": command, "id": ..., "ts": ms} that is fresh and seen once
-    try:
-        msg = unseal(text)
-    except Exception:
-        return None
-    if abs(time.time() - msg.get("ts", 0) / 1000) > MAX_AGE_SEC or msg.get("id") in _seen:
-        return None
-    _seen.append(msg["id"])
-    del _seen[:-500]
-    return msg
-
-
-def _handle(text: str, via: str, on_command) -> None:
-    msg = _accept(text)
-    if not msg:
+def _handle(msg: dict, via: str, on_command) -> None:
+    if not fresh(msg):
         return
 
     def run():
@@ -98,18 +143,6 @@ def _handle(text: str, via: str, on_command) -> None:
     threading.Thread(target=run, daemon=True).start()
 
 
-def _start_mqtt(on_command) -> None:
-    global _mqtt
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=f"home-bot-{uuid.uuid4().hex[:8]}")
-    client.tls_set()
-    client.reconnect_delay_set(1, 60)
-    client.on_connect = lambda c, u, flags, rc, props: c.subscribe(_topic("cmd"), qos=1)
-    client.on_message = lambda c, u, m: _handle(m.payload.decode(), "mqtt", on_command)
-    client.connect_async(BROKER, BROKER_PORT, keepalive=60)
-    client.loop_start()  # reconnects by itself, also after the internet comes back
-    _mqtt = client
-
-
 def _ntfy_loop(on_command) -> None:
     while True:
         try:
@@ -118,8 +151,13 @@ def _ntfy_loop(on_command) -> None:
             with urllib.request.urlopen(req, timeout=90) as r:
                 for line in r:
                     ev = json.loads(line)
-                    if ev.get("event") == "message":
-                        _handle(ev["message"], "ntfy", on_command)
+                    if ev.get("event") != "message":
+                        continue
+                    try:
+                        msg = unseal(ev["message"])
+                    except Exception:
+                        continue
+                    _handle(msg, "ntfy", on_command)
         except Exception as e:
             if "timed out" not in str(e):
                 log(f"панель, ntfy: {e!r}")
@@ -127,9 +165,11 @@ def _ntfy_loop(on_command) -> None:
 
 
 def start(on_command) -> None:
-    _start_mqtt(on_command)
+    # panel commands
+    connect()
+    on(("cmd",), lambda msg: _handle(msg, "mqtt", on_command))
     threading.Thread(target=_ntfy_loop, args=(on_command,), daemon=True, name="ntfy").start()
 
 
 def mqtt_connected() -> bool:
-    return bool(_mqtt and _mqtt.is_connected())
+    return connected()

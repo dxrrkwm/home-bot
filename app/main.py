@@ -1,14 +1,15 @@
+import os
 import socket
 import sys
 import threading
 import time
 
-from app import config, panel, router
+from app import config, link, panel, relay, role, router, sync
 from app.log import log
 from app.paths import HEARTBEAT
 from app.telegram import Ctx, api, flush
 
-SINGLE_INSTANCE_PORT = 47321
+SINGLE_INSTANCE_PORT = int(os.environ.get("HOME_BOT_PORT", 47321))
 
 
 def _single_instance() -> socket.socket:
@@ -27,6 +28,13 @@ def _log_crashes() -> None:
     threading.excepthook = lambda a: log(f"crash in {a.thread.name if a.thread else 'thread'}: {a.exc_value!r}")
 
 
+def _exit_with_parent() -> None:
+    # started by the laptop agent to cover for the hub: stdin closes when the agent is gone
+    sys.stdin.read()
+    log("агент зупинився, вихід")
+    os._exit(0)
+
+
 def _poll(offset: int) -> int:
     cfg = config.load()
     token = cfg.get("token", "").strip()
@@ -41,6 +49,7 @@ def _poll(offset: int) -> int:
         # messages it sends wait in the outbox
         if cfg.get("chat_id"):
             router.tick(Ctx(token, cfg["chat_id"], cfg))
+        sync.push()
 
     flush(token)
     for upd in updates:
@@ -53,9 +62,23 @@ def _poll(offset: int) -> int:
 
 
 def main() -> None:
+    if role.ROLE == "agent":
+        from app import agent
+
+        agent.main()
+        return
+
     lock = _single_instance()  # noqa: F841 keep the port busy while running
     _log_crashes()
-    log("старт")
+    log(f"старт ({role.ROLE})")
+    if os.environ.get("HOME_BOT_TAKEOVER"):
+        threading.Thread(target=_exit_with_parent, daemon=True).start()
+    sync.start()
+    if role.ROLE == "hub":
+        link.start_hub()
+    else:
+        relay.connect()
+    sync.pull()
     router.start_background()
     panel.start()
 

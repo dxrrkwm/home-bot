@@ -2,10 +2,8 @@ import datetime as dt
 import threading
 import time
 
-from app import config, relay
+from app import config, devices, relay
 from app import keyboards as kb
-from app.features import laptop
-from app.features.laptop import power
 from app.log import log
 from app.services import outage, powerlog, station
 from app.telegram import Ctx
@@ -77,7 +75,7 @@ def _hm_end(a: dt.datetime, b: dt.datetime) -> str:
 
 def panel_data(cfg: dict, force: bool = False) -> dict:
     s = monitor.fresh(max_age=0 if force else 30) if station.configured() else None
-    ac, lpct = power()
+    ac, lpct = devices.power()
     stats = powerlog.stats(7) or {"outages": [], "supply": None, "charging": None}
     fact = [(dt.datetime.fromtimestamp(a), dt.datetime.fromtimestamp(b)) for a, b in stats["outages"]]
     plan = [(a, b) for a, b, _ in outage.intervals(cfg.get("outage_group"))]
@@ -127,7 +125,7 @@ def panel_data(cfg: dict, force: bool = False) -> dict:
         "ups": monitor.ups,
         "grid": grid,
         "since": since,
-        "laptop": {"ac": ac, "pct": lpct, "eco": laptop.is_eco()},
+        "laptop": {"ac": ac, "pct": lpct, "eco": devices.is_eco()},
         "days": days,
         "count": len(stats["outages"]),
         "hours": round(sum(b - a for a, b in stats["outages"]) / 3600, 1),
@@ -142,8 +140,7 @@ def panel_data(cfg: dict, force: bool = False) -> dict:
 def _grid_lost(ctx: Ctx, s: dict) -> None:
     msg = f"⚫ Світло зникло, все працює від станції. {brief(s)}"
     inline = None
-    if ctx.cfg.get("station_auto_eco", True) and not laptop.is_eco():
-        laptop.run_mode("eco")
+    if ctx.cfg.get("station_auto_eco", True) and not devices.is_eco() and devices.switch("eco"):
         msg += "\n🔋 Увімкнув Еко."
         inline = [[{"text": "⚡ Повернути звичайний", "callback_data": "normal"}]]
     ctx.send(msg, inline=inline)
@@ -156,8 +153,7 @@ def _grid_back(ctx: Ctx, s: dict) -> None:
         spent = f"витрачено {used}%" if used else "заряд не змінився"
         msg += f" Без світла було {station.fmt_mins((time.time() - start[0]) / 60)}, станція {s['pct']}% ({spent})."
     inline = None
-    if ctx.cfg.get("station_auto_eco", True) and laptop.is_eco():
-        laptop.run_mode("normal")
+    if ctx.cfg.get("station_auto_eco", True) and devices.is_eco() and devices.switch("normal"):
         msg += "\n⚡ Повернув звичайний режим."
         inline = [[{"text": "🔋 Лишити еко", "callback_data": "eco"}]]
     ctx.send(msg, inline=inline)
@@ -262,7 +258,7 @@ def tick(ctx: Ctx) -> None:
         elif kind == "full":
             ctx.send("✅ Станція заряджена на 100%. Можна вимикати з розетки.")
         elif kind == "charge_hint":
-            if power()[0]:  # laptop on mains means there is power
+            if devices.power()[0]:  # laptop on mains means there is power
                 ctx.send(f"🔋 Станція {s['pct']}%. Поки є світло — постав її заряджатись.")
             else:
                 monitor.flags.discard("charge_hint")  # remind when power is back

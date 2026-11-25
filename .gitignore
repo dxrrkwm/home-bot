@@ -13,3 +13,5 @@ planner.json
 data/
 prices.json
 prices_cache.json
+*.bundle
+takeover_out.log
