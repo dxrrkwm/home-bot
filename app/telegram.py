@@ -44,15 +44,30 @@ class Ctx:
     token: str
     chat: int
     cfg: dict
+    msg_id: int | None = None  # the user message this answers, if it came from the chat
 
-    def send(self, text: str, inline: list | None = None, menu: dict | None = None) -> None:
+    @property
+    def in_panel(self) -> bool:
+        return bool(getattr(_local, "target", None))
+
+    def delete(self, message_id: int | None) -> None:
+        # bots may delete their own and incoming messages in a private chat (up to 48 h)
+        if not message_id:
+            return
+        try:
+            api(self.token, "deleteMessage", chat_id=self.chat, message_id=message_id)
+        except Exception:
+            pass
+
+    def send(self, text: str, inline: list | None = None, menu: dict | None = None) -> int | None:
         target = getattr(_local, "target", None)
         if target:
             return target(text, inline or [])
         markup = {"inline_keyboard": inline} if inline else (menu or DEFAULT)
         flush(self.token)
         try:
-            api(self.token, "sendMessage", chat_id=self.chat, text=text, reply_markup=markup)
+            res = api(self.token, "sendMessage", chat_id=self.chat, text=text, reply_markup=markup)
+            return (res.get("result") or {}).get("message_id")
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             if isinstance(e, urllib.error.HTTPError) and e.code != 429:
                 raise

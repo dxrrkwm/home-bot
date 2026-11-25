@@ -69,15 +69,17 @@ def handle_update(token: str, cfg: dict, upd: dict) -> None:
         chat = cq["message"]["chat"]["id"]
         api(token, "answerCallbackQuery", callback_query_id=cq["id"])
         text = cq.get("data")
+        msg_id = None
     elif "message" in upd:
         chat = upd["message"]["chat"]["id"]
         text = upd["message"].get("text", "")
+        msg_id = upd["message"]["message_id"]
         if "web_app_data" in upd["message"]:  # old panel buttons send commands this way
             text = upd["message"]["web_app_data"]["data"]
     else:
         return
 
-    ctx = Ctx(token, chat, cfg)
+    ctx = Ctx(token, chat, cfg, msg_id)
     if not cfg.get("chat_id"):
         if text == "/start":
             cfg["chat_id"] = chat

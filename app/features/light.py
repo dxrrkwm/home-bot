@@ -1,7 +1,9 @@
+import json
 import re
 import time
 
 from app import keyboards as kb
+from app.paths import ROOT
 from app.telegram import Ctx
 
 # button -> (lamp method, argument)
@@ -26,6 +28,7 @@ CUSTOM_RE = re.compile(r"^\s*(?:#([0-9a-f]{6}|[0-9a-f]{3}))?\s*(?:(\d{1,3})\s*%)
 CT_RE = re.compile(r"^\s*(\d{4})\s*[KkК]\s*$")
 HINT = "🎨 Свій колір, яскравість чи температура — просто напиши: #FF8C69, #FF8C69 60%, 35% або 4000K"
 
+STATE = ROOT / "light_state.json"  # id of the last lamp message in the chat
 _lamp = None
 
 
@@ -126,12 +129,28 @@ def status() -> str:
     return f"💡 Лампа: увімкнена\nЯскравість: {s['bright']}%\n{tone}"
 
 
+def _reply(ctx: Ctx, text: str) -> None:
+    # in the chat keep one lamp message at the bottom: new state replaces the old one, button presses go away
+    if ctx.in_panel:
+        ctx.send(text, menu=kb.MAIN)
+        return
+    try:
+        old = json.loads(STATE.read_text(encoding="utf-8")).get("msg")
+    except Exception:
+        old = None
+    new = ctx.send(text, menu=kb.MAIN)
+    if new:
+        STATE.write_text(json.dumps({"msg": new}), encoding="utf-8")
+        ctx.delete(old)
+    ctx.delete(ctx.msg_id)
+
+
 def _do(ctx: Ctx, action) -> None:
     try:
         action()
-        ctx.send(status(), menu=kb.MAIN)
+        _reply(ctx, status())
     except Exception as e:
-        ctx.send(f"💡 Не вийшло: {e}", menu=kb.MAIN)
+        _reply(ctx, f"💡 Не вийшло: {e}")
 
 
 def handle(ctx: Ctx, text: str) -> bool:
@@ -142,11 +161,11 @@ def handle(ctx: Ctx, text: str) -> bool:
     elif custom:
         _do(ctx, lambda: apply_custom(*custom))
     elif text == "lamp?":
-        ctx.send(status())
+        _reply(ctx, status())
     elif text == "toggle_light":
         _do(ctx, lambda: (_with_lamp(lambda lamp: lamp.toggle()), time.sleep(0.5)))
     elif text == kb.LIGHT:
-        ctx.send(status() + "\n\n" + HINT, menu=kb.MAIN)
+        _reply(ctx, status() + "\n\n" + HINT)
     elif text in ACTIONS:
         _do(ctx, lambda: apply_action(text))
     else:
