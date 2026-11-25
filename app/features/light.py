@@ -22,7 +22,9 @@ ACTIONS = {
 }
 # custom color and brightness as text: "#FF8C69", "#FF8C69 60%", "60%", "#f80 25%"
 CUSTOM_RE = re.compile(r"^\s*(?:#([0-9a-f]{6}|[0-9a-f]{3}))?\s*(?:(\d{1,3})\s*%)?\s*$", re.I)
-HINT = "🎨 Свій колір чи яскравість — просто напиши: #FF8C69, #FF8C69 60% або 35%"
+# white color temperature: "4000K", the lamp takes 1700-6500
+CT_RE = re.compile(r"^\s*(\d{4})\s*[KkК]\s*$")
+HINT = "🎨 Свій колір, яскравість чи температура — просто напиши: #FF8C69, #FF8C69 60%, 35% або 4000K"
 
 _lamp = None
 
@@ -134,7 +136,10 @@ def _do(ctx: Ctx, action) -> None:
 
 def handle(ctx: Ctx, text: str) -> bool:
     custom = parse_custom(text) if text not in kb.BUTTONS else None
-    if custom:
+    if m := CT_RE.match(text):
+        kelvin = int(m.group(1))
+        _do(ctx, lambda: _with_lamp(lambda lamp: (lamp.power(True), lamp.ct(kelvin))))
+    elif custom:
         _do(ctx, lambda: apply_custom(*custom))
     elif text == "lamp?":
         ctx.send(status())
