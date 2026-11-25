@@ -1,7 +1,8 @@
 import datetime as dt
+import threading
 import time
 
-from app import config
+from app import config, relay
 from app import keyboards as kb
 from app.features import laptop
 from app.features.laptop import power
@@ -10,6 +11,7 @@ from app.services import outage, powerlog, station
 from app.telegram import Ctx
 
 WEEKLY_AT = (0, 10)  # monday 10:00
+PUSH_SEC = 60  # station state to an open panel
 
 monitor = station.Monitor(log=log)
 
@@ -162,7 +164,9 @@ def _weekly(ctx: Ctx) -> None:
     if (now.tm_wday, now.tm_hour) < WEEKLY_AT or week in monitor.flags:
         return
     monitor.flags = {f for f in monitor.flags if not f.startswith("week:")} | {week}
-    ctx.send(powerlog.summary(7) + "\n\n📨 Перешли цей підсумок асистенту — розберемо тиждень і підкрутимо налаштування.")
+    ctx.send(
+        powerlog.summary(7) + "\n\n📨 Перешли цей підсумок асистенту — розберемо тиждень і підкрутимо налаштування."
+    )
 
 
 def buttons() -> list:
@@ -203,9 +207,21 @@ def handle(ctx: Ctx, text: str) -> bool:
     return False
 
 
+_pushed = {"at": 0.0}
+
+
+def _push(cfg: dict) -> None:
+    # an open panel gets the station state by itself; only over mqtt, ntfy has a daily limit
+    if time.time() - _pushed["at"] < PUSH_SEC or not relay.mqtt_connected():
+        return
+    _pushed["at"] = time.time()
+    threading.Thread(target=lambda: relay.publish("station", panel_data(cfg)), daemon=True).start()
+
+
 def tick(ctx: Ctx) -> None:
     monitor.ups = bool(ctx.cfg.get("station_ups"))
     _weekly(ctx)
+    _push(ctx.cfg)
     for kind, s in monitor.pop_events():
         if kind == "grid_lost":
             _grid_lost(ctx, s)

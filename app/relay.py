@@ -128,3 +128,7 @@ def _ntfy_loop(on_command) -> None:
 def start(on_command) -> None:
     _start_mqtt(on_command)
     threading.Thread(target=_ntfy_loop, args=(on_command,), daemon=True, name="ntfy").start()
+
+
+def mqtt_connected() -> bool:
+    return bool(_mqtt and _mqtt.is_connected())
