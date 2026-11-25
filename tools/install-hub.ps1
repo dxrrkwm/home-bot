@@ -31,18 +31,11 @@ if ($LASTEXITCODE) { Pop-Location; throw "bundle not unpacked" }
 & $python -m app.role hub
 Pop-Location
 
-# every 3 minutes and at startup, whether anyone is logged on or not (S4U needs no password)
-$action = New-ScheduledTaskAction -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Dir\watchdog.ps1`" -Python `"$python`""
-$triggers = @(
-    (New-ScheduledTaskTrigger -AtStartup),
-    (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 3))
-)
-$principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 2) -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName $task -Action $action -Trigger $triggers -Principal $principal -Settings $settings -Force | Out-Null
-Start-ScheduledTask -TaskName $task
+# the task needs admin: a UAC prompt
+$register = "-NoProfile -ExecutionPolicy Bypass -File `"$Dir\tools\register-task.ps1`" -Dir `"$Dir`" -Python `"$python`" -User `"$env:USERDOMAIN\$env:USERNAME`""
+egister-task.ps1`" -Dir `"$Dir`" -Python `"$python`" -User `"$env:USERDOMAIN\$env:USERNAME`""
+Start-Process powershell.exe -Verb RunAs -Wait -ArgumentList $register
+if (-not (Get-ScheduledTask $task -ea 0)) { throw "task '$task' not created (UAC declined?)" }
 
 $tz = Get-TimeZone
 if ($tz.BaseUtcOffset.TotalHours -ne 2) { Write-Warning "timezone $($tz.Id): reminders use local time, Kyiv is UTC+2" }

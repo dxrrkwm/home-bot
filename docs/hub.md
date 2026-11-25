@@ -40,7 +40,7 @@ Role: `"role"` in `config.json` (`standalone` / `hub` / `agent`), `python -m app
    ```
    It installs Python 3.13 and Git (winget) if missing, clones the repo to `C:\home-bot`, installs the requirements,
    unpacks the bundle (asks for the passphrase), sets the role and adds the task "home-bot watchdog"
-   (at startup and every 3 min, S4U: works without a logged on user). At the end it shows the log tail:
+   (at startup and every 3 min, S4U: works without a logged on user; one UAC prompt). At the end it shows the log tail:
    `старт (hub)` means it runs. It warns if the timezone is not UTC+2 or the PC sleeps on idle.
 3. On the laptop: `python -m app.role agent`, then restart the bot (stop python with `bot.py`, run `watchdog.ps1`).
 4. In the chat: `/where` shows the machine and whether the laptop is online.
