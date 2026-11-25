@@ -1,0 +1,17 @@
+{
+  "token": "<botfather token>",
+  "chat_id": null,
+  "lamp": {
+    "ip": "192.168.0.100",
+    "token": "<32 hex>"
+  },
+  "mono_token": "<api.monobank.ua token>",
+  "daily_budget": 280,
+  "outage_group": "",
+  "webapp_url": "",
+  "panel_topic": "<random>",
+  "panel_key": "<random base64url 32 bytes>",
+  "panel_version": 7,
+  "station_ups": false,
+  "mono_dir": ""
+}

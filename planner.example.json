@@ -1,0 +1,22 @@
+{
+  "monthly": [
+    {
+      "day": 5,
+      "id": "payslip",
+      "text": "📄 Payslip usually comes around the 5th."
+    },
+    {
+      "day": 7,
+      "id": "rent",
+      "text": "💸 Salary day: pay the rent."
+    }
+  ],
+  "birthdays": [
+    {
+      "month": 4,
+      "day": 26,
+      "who": "мами",
+      "id": "mom"
+    }
+  ]
+}

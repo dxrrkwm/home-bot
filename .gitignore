@@ -1,0 +1,13 @@
+config.json
+.env
+*.log
+heartbeat.txt
+*_state.json
+station_history.csv
+outage_cache.json
+meds.json
+reminders.json
+__pycache__/
+power.db
+planner.json
+data/
