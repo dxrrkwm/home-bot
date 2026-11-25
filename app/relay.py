@@ -19,7 +19,8 @@ from app.log import log
 BROKER, BROKER_PORT = "broker.hivemq.com", 8883
 NTFY = "https://ntfy.sh"
 HEADERS = {"User-Agent": "home-bot"}
-RETAINED = {"station", "lamp", "fin"}  # state kinds: the broker keeps the last one for a panel that opens later
+# state kinds: the broker keeps the last one for a panel that opens later
+RETAINED = {"station", "lamp", "fin", "prices"}
 MAX_AGE_SEC = 120  # older commands are replays or stuck in a queue
 
 _local = threading.local()  # which channel the current command came from, the answer goes back the same way

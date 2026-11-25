@@ -26,7 +26,7 @@ app/
   panel.py             mini app bridge over ntfy, encrypted answers
   config.py, paths.py, log.py
   features/            one module per feature: handle(ctx, text) -> bool, optional start() and tick(ctx)
-  services/            integrations without telegram: lamp, mono, station, outage, pills, planner, powerlog
+  services/            integrations without telegram: lamp, mono, station, outage, pills, planner, powerlog, prices
 ```
 
 ## Power station modes
@@ -37,6 +37,15 @@ app/
   Outages are detected by the station (no input and it supplies the load, 2 polls in a row): eco on, normal when power is back.
   AC is never switched off on idle. Alerts: 30/15%, AC off, station offline 10 min, overheating, fault code.
 - `false`: the station stands aside, outages are detected by the laptop going to battery.
+
+## Snack prices
+
+`features/prices.py` + `services/prices.py`: energy drinks 0.5 l and bars of the brands in `prices.json`
+(copy of `prices.example.json`, not in git) at Silpo (sf-ecom-api) and Novus (zakaz.ua), both open json apis.
+Drinks are compared per can, bars per 100 g, "from N pieces" offers count when a pack (12) covers them.
+Every 4 hours in the daytime: anything at or below the target that was not announced yet (or got cheaper)
+comes as one message with a picture and shop links. Chat: `ціни`, `оновити ціни`, `ціль енергетик 33`,
+`ціль батончик 55`. Panel: `prices-panel`, `prices-panel:force`.
 
 ## Power log
 
@@ -53,8 +62,8 @@ New feature: add `app/features/<name>.py` with `handle`, then put it into `FEATU
 
 ## Config
 
-`config.json`, `.env` and `planner.json` (monthly reminders and birthdays) are not in git,
-see `config.example.json`, `.env.example` and `planner.example.json`.
+`config.json`, `.env`, `planner.json` (monthly reminders and birthdays) and `prices.json` are not in git,
+see `config.example.json`, `.env.example`, `planner.example.json` and `prices.example.json`.
 `watchdog.ps1` uses Python 3.13 from `%LOCALAPPDATA%\Programs\Python`, or `HOME_BOT_PYTHON` if it is set.
 
 ## Lint

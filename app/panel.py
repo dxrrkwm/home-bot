@@ -2,7 +2,7 @@
 import threading
 
 from app import config, keyboards, relay, router, telegram
-from app.features import light, money, reminders, station
+from app.features import light, money, prices, reminders, station
 from app.log import log
 from app.services import mono
 
@@ -35,6 +35,23 @@ def _lamp() -> None:
     publish("lamp", state)
 
 
+def publish_prices() -> None:
+    data = prices.panel_data()
+    if data:
+        publish("prices", data)
+
+
+def _prices(force: bool = False) -> None:
+    if force or prices.stale():
+        prices.refresh(telegram.Ctx(*_chat()))
+    publish_prices()
+
+
+def _chat() -> tuple:
+    cfg = config.load()
+    return cfg["token"], cfg["chat_id"], cfg
+
+
 def _station(force: bool = False) -> None:
     publish("station", station.panel_data(config.load(), force))
 
@@ -46,6 +63,7 @@ REQUESTS = {
     "lamp-state": lambda arg: _lamp(),
     "station-panel": lambda arg: _station(arg == "force"),
     "rem-list": lambda arg: publish("reminders", reminders.panel_list()),
+    "prices-panel": lambda arg: _prices(arg == "force"),
 }
 
 
@@ -54,8 +72,7 @@ def _command(text: str, msg_id: str) -> None:
     if name in REQUESTS:
         REQUESTS[name](arg)
         return
-    cfg = config.load()
-    ctx = telegram.Ctx(cfg["token"], cfg["chat_id"], cfg)
+    ctx = telegram.Ctx(*_chat())
     # "re" ties the answer to the command, so a slow answer does not land on another screen
     reply = lambda text, buttons: publish("reply", {"text": text, "buttons": buttons, "re": msg_id})  # noqa: E731
     with router.lock, telegram.redirected(reply):
@@ -79,4 +96,5 @@ def start() -> None:
         return
     threading.Thread(target=_menu_button, daemon=True).start()
     money.on_synced.append(publish_finance)
+    prices.on_checked.append(publish_prices)
     relay.start(_command)

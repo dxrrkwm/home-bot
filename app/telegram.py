@@ -59,14 +59,20 @@ class Ctx:
         except Exception:
             pass
 
-    def send(self, text: str, inline: list | None = None, menu: dict | None = None) -> int | None:
+    def send(
+        self, text: str, inline: list | None = None, menu: dict | None = None, preview: str | None = None
+    ) -> int | None:
+        # preview: a picture url shown above the text
         target = getattr(_local, "target", None)
         if target:
             return target(text, inline or [])
         markup = {"inline_keyboard": inline} if inline else (menu or DEFAULT)
+        extra = {}
+        if preview:
+            extra["link_preview_options"] = {"url": preview, "prefer_large_media": True, "show_above_text": True}
         flush(self.token)
         try:
-            res = api(self.token, "sendMessage", chat_id=self.chat, text=text, reply_markup=markup)
+            res = api(self.token, "sendMessage", chat_id=self.chat, text=text, reply_markup=markup, **extra)
             return (res.get("result") or {}).get("message_id")
         except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
             if isinstance(e, urllib.error.HTTPError) and e.code != 429:

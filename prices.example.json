@@ -1,0 +1,21 @@
+{
+  "pack": 12,
+  "novus_store": 48201029,
+  "groups": {
+    "drinks": {
+      "name": "Енергетики 0,5",
+      "ml": 500,
+      "target": 35,
+      "brands": ["Non Stop", "Burn", "Monster", "Best Shot"],
+      "silpo": "energetychni-napoi-59",
+      "novus": "energy-drinks"
+    },
+    "bars": {
+      "name": "Батончики",
+      "target": 60,
+      "brands": ["Nuts", "Lion", "Snickers", "Twix", "Bounty", "Mars", "Picnic", "Kit Kat"],
+      "silpo": "shokoladni-batonchyky-525",
+      "novus": "chocolate-bars-novus"
+    }
+  }
+}

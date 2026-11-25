@@ -11,3 +11,5 @@ __pycache__/
 power.db
 planner.json
 data/
+prices.json
+prices_cache.json
