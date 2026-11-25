@@ -12,6 +12,8 @@ from app.telegram import Ctx
 
 WEEKLY_AT = (0, 10)  # monday 10:00
 PUSH_SEC = 60  # station state to an open panel
+LED = {"led:0": 0, "led:1": 1, "led:2": 2}  # station light; 3 (sos) is left out on purpose
+LED_NAMES = {0: "вимкнено", 1: "світить", 2: "блимає"}
 
 monitor = station.Monitor(log=log)
 
@@ -117,6 +119,7 @@ def panel_data(cfg: dict, force: bool = False) -> dict:
             "in": s["in_w"],
             "out": s["out_w"],
             "ac": bool(s.get("ac_on")),
+            "led": s.get("led", 0),
             "temp": s.get("temp"),
             "charge": s.get("charge_mins"),
         },
@@ -189,6 +192,14 @@ def handle(ctx: Ctx, text: str) -> bool:
             ctx.send(f"🔌 Розетку AC {'увімкнено' if on else 'вимкнено'}.", menu=kb.MAIN)
         except Exception as e:
             ctx.send(f"🔌 Не вийшло: {e}", menu=kb.MAIN)
+        return True
+    if text in LED or text == "led:toggle":
+        mode = LED.get(text, 0 if (monitor.last or {}).get("led") else 1)
+        try:
+            monitor.set_led(mode)
+            ctx.send(f"🔦 Ліхтар на станції: {LED_NAMES[mode]}.", menu=kb.MAIN)
+        except Exception as e:
+            ctx.send(f"🔦 Не вийшло: {e}", menu=kb.MAIN)
         return True
     if text == "station_stats":
         ctx.send(powerlog.summary(7), menu=kb.MAIN)

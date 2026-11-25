@@ -163,14 +163,15 @@ class Cloud:
             },
         )
 
-    def set_ac(self, on):
+    def control(self, values, what):
+        # write properties of the device model, e.g. {"ac_switch": True} or {"led_status": 1}
         if not self.dk:
             self.find_device()
         res = self._call(
             "POST",
             "/v2/binding/enduserapi/batchControlDevice",
             js={
-                "data": json.dumps([{"ac_switch": bool(on)}]),
+                "data": json.dumps([values]),
                 "deviceList": [{"deviceKey": self.dk, "productKey": self.pk}],
                 "cacheTime": 60,
                 "isCache": 1,
@@ -180,7 +181,10 @@ class Cloud:
             },
         )
         if res.get("code") != 200 or (res.get("data") or {}).get("failureList"):
-            raise CloudError(f"AC не перемкнувся: {res.get('msg')} (код {res.get('code')})")
+            raise CloudError(f"{what} не перемкнувся: {res.get('msg')} (код {res.get('code')})")
+
+    def set_ac(self, on):
+        self.control({"ac_switch": bool(on)}, "AC")
 
     def telemetry(self):
         if not self.dk:
@@ -261,6 +265,7 @@ def normalize(raw):
         "mins_left": mins,
         "charge_mins": charge_mins,
         "ac_on": bool(raw.get("ac_switch")),
+        "led": int(_num(raw.get("led_status"))),
         "temp": raw.get("temp"),
         "inv_temp": raw.get("inverter_temp"),
         "fault": raw.get("device_fault_status"),
@@ -404,6 +409,21 @@ class Monitor:
         self.log(f"станція: AC {'ON' if on else 'OFF'} {why}")
         powerlog.event("ac_on" if on else "ac_off", why.strip("()"))
         return True
+
+    def set_led(self, mode):
+        # station light: 0 off, 1 on, 2 flashing
+        if not configured():
+            return
+        if self.cloud is None:
+            env = read_env()
+            self.cloud = Cloud(env["OUKITEL_EMAIL"], env["OUKITEL_PASSWORD"], env.get("OUKITEL_REGION", "EU"))
+        with self._lock_cloud:
+            self.cloud.find_device()
+            if not self.cloud.online:
+                raise CloudError("станція не в мережі — вимкнена або заснула.")
+            self.cloud.control({"led_status": int(mode)}, "Ліхтар")
+        if self.last:
+            self.last["led"] = int(mode)
 
     def _auto_ac(self, s):
         if (
