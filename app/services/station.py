@@ -30,6 +30,7 @@ IDLE_OFF_MIN = 10  # ac on with no load this long: switch it off, the inverter e
 HOT_C, COOL_C = 55, 50  # temp at idle already reads ~40, calibrate from power.db
 OFFLINE_ALERT_MIN = 10  # in ups mode the station should never go offline
 GRID_CONFIRM = 2  # polls in a row before we believe power went or came back
+CONFIRM_SEC = 15  # poll sooner while a grid change waits for confirmation
 
 SERVERS = {
     "EU": "https://iot-api.acceleronix.io",
@@ -529,7 +530,7 @@ class Monitor:
             self._emit("grid_back", dict(s, outage_start=self.outage_start))
             self.outage_start = None
         else:
-            self.outage_start = (time.time() - POLL_SEC * GRID_CONFIRM, s["pct"])
+            self.outage_start = (time.time() - POLL_SEC - CONFIRM_SEC, s["pct"])
             powerlog.event("grid_lost", f"{s['pct']}%")
             self._emit("grid_lost", s)
 
@@ -545,7 +546,7 @@ class Monitor:
                 if "логін" in msg:
                     self.cloud = None
                     time.sleep(600)  # do not hammer the server with a wrong password
-            time.sleep(POLL_SEC)
+            time.sleep(CONFIRM_SEC if self._grid_votes else POLL_SEC)
 
 
 if __name__ == "__main__":
