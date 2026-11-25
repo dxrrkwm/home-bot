@@ -22,6 +22,7 @@ STATE = ROOT / "station_state.json"
 
 CAPACITY_WH = 1024  # P1000E Plus
 POLL_SEC = 60
+WAKE_SEC = 45  # firmware drops fast reporting after ~90 s, without it the cloud returns old data
 GRID_W = 5  # more input than this means power is on
 LOW_LEVELS = (30, 15)  # warnings while the station supplies something
 CHARGE_HINT_PCT = 50  # below this remind to charge while there is power
@@ -356,7 +357,7 @@ class Monitor:
         env = read_env()
         if self.cloud is None or self.cloud.email != env["OUKITEL_EMAIL"]:
             self.cloud = Cloud(env["OUKITEL_EMAIL"], env["OUKITEL_PASSWORD"], env.get("OUKITEL_REGION", "EU"))
-        if time.time() - self._last_wake > 300:
+        if time.time() - self._last_wake > WAKE_SEC:
             try:
                 self.cloud.wake()
             except Exception as e:
