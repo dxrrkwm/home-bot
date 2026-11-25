@@ -152,7 +152,9 @@ def _grid_lost(ctx: Ctx, s: dict) -> None:
 def _grid_back(ctx: Ctx, s: dict) -> None:
     msg = "💡 Світло є, станція знову від мережі."
     if start := s.get("outage_start"):
-        msg += f" Без світла було {station.fmt_mins((time.time() - start[0]) / 60)}, станція −{max(start[1] - s['pct'], 0)}%."
+        used = max(start[1] - s["pct"], 0)
+        spent = f"витрачено {used}%" if used else "заряд не змінився"
+        msg += f" Без світла було {station.fmt_mins((time.time() - start[0]) / 60)}, станція {s['pct']}% ({spent})."
     inline = None
     if ctx.cfg.get("station_auto_eco", True) and laptop.is_eco():
         laptop.run_mode("normal")
