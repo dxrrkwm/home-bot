@@ -3,7 +3,7 @@ name = "home-bot"
 version = "1.0.0"
 description = "Telegram bot for my laptop, lamp, power station, reminders and finances"
 requires-python = ">=3.12"
-dependencies = ["cryptography", "pycryptodome"]
+dependencies = ["cryptography", "pycryptodome", "paho-mqtt>=2,<3"]
 
 [tool.ruff]
 target-version = "py312"

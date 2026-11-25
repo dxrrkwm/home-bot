@@ -3,7 +3,7 @@
 Telegram bot that runs on my laptop: power modes, Xiaomi lamp, Oukitel power station, power outage schedule (DTEK),
 reminders, pills and monobank statement. Has a Telegram Mini App panel: [home-bot-panel](https://github.com/dxrrkwm/home-bot-panel).
 
-Standard library only, except `cryptography` (lamp) and `pycryptodome` (station).
+Standard library only, except `cryptography` (lamp), `pycryptodome` (station) and `paho-mqtt` (panel).
 
 ## Run
 
