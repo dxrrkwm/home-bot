@@ -121,8 +121,37 @@ def _remove(rid: str) -> dict | None:
     return found
 
 
+def panel_list() -> list:
+    return [
+        {"id": r["id"], "ts": int(r["ts"]), "text": r["text"], "every": r["every"]}
+        for r in sorted(load(), key=lambda r: r["ts"])
+    ]
+
+
+def _edit(data: dict) -> dict | None:
+    # from the panel: {"id", "text", "ts", "every"}; a new time starts the reminder over
+    with _lock:
+        items = load()
+        for r in items:
+            if r["id"] == data.get("id"):
+                r["text"] = (data.get("text") or r["text"]).strip()
+                r["every"] = max(0, int(data.get("every", r["every"])))
+                if int(data.get("ts", r["ts"])) != int(r["ts"]):
+                    r["ts"] = r["at"] = float(data["ts"])
+                    r["pings"] = 0
+                save(items)
+                return r
+    return None
+
+
 def handle(ctx: Ctx, text: str) -> bool:
-    if text.startswith("delrem:"):
+    if text.startswith("remedit:"):
+        r = _edit(json.loads(text.split(":", 1)[1]))
+        if r:
+            ctx.send(f"✏️ Змінив: {_when(r['ts'])} — {r['text']} ({every_text(r['every'])})", menu=kb.MAIN)
+        else:
+            ctx.send("✏️ Не вийшло: такого нагадування вже немає.", menu=kb.MAIN)
+    elif text.startswith("delrem:"):
         _remove(text.split(":", 1)[1])
         ctx.send("🗑 Видалив.\n\n" + text_list(), inline=buttons())
     elif text.startswith("remdone:"):

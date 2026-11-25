@@ -2,7 +2,7 @@
 import threading
 
 from app import config, keyboards, relay, router, telegram
-from app.features import light, money, station
+from app.features import light, money, reminders, station
 from app.log import log
 from app.services import mono
 
@@ -45,6 +45,7 @@ REQUESTS = {
     "fin-detail": _detail,
     "lamp-state": lambda arg: _lamp(),
     "station-panel": lambda arg: _station(arg == "force"),
+    "rem-list": lambda arg: publish("reminders", reminders.panel_list()),
 }
 
 
