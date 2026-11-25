@@ -162,7 +162,7 @@ def _weekly(ctx: Ctx) -> None:
     if (now.tm_wday, now.tm_hour) < WEEKLY_AT or week in monitor.flags:
         return
     monitor.flags = {f for f in monitor.flags if not f.startswith("week:")} | {week}
-    ctx.send(powerlog.summary(7))
+    ctx.send(powerlog.summary(7) + "\n\n📨 Перешли цей підсумок асистенту — розберемо тиждень і підкрутимо налаштування.")
 
 
 def buttons() -> list:
