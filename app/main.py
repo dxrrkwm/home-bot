@@ -4,7 +4,7 @@ import sys
 import threading
 import time
 
-from app import config, link, panel, relay, role, router, sync
+from app import config, handover, link, panel, relay, role, router, sync
 from app.log import log
 from app.paths import HEARTBEAT, TAKEOVER_HEARTBEAT
 from app.telegram import Ctx, api, flush
@@ -76,6 +76,7 @@ def main() -> None:
     sync.start()
     if role.ROLE == "hub":
         link.start_hub()
+        handover.start_hub()
     else:
         relay.connect()
     sync.pull()

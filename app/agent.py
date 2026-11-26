@@ -9,7 +9,7 @@ import sys
 import threading
 import time
 
-from app import config, link, relay, sync
+from app import config, handover, link, relay, sync
 from app.features import light, money
 from app.log import log
 from app.main import SINGLE_INSTANCE_PORT as BOT_PORT
@@ -100,6 +100,7 @@ class Takeover:
         self.active = False
         self.proc = None
         self.started = time.time()
+        self.since = self.started
         self.retry_at = 0.0
 
     def _say(self, text: str) -> None:
@@ -135,6 +136,8 @@ class Takeover:
     def start(self, resume: bool = False) -> None:
         log("агент: продовжую підміну хаба" if resume else "агент: хаба не чути 10 хв, запускаю бота тут")
         self.active = True
+        # what the bot here collects from this moment goes to the hub when it is back
+        self.since = time.time() - (handover.RESUMED_SINCE_SEC if resume else 0)
         self._flag(True)
         self._spawn()
         if not resume:
@@ -148,6 +151,10 @@ class Takeover:
         self.proc = None
         self.active = False
         sync.push(force=True)  # the hub takes the state from here
+        try:
+            handover.send_data(self.since)
+        except Exception as e:
+            log(f"агент, handover: {e!r}")
         self._flag(False)
         self._say("✅ ПК з ботом знову на зв'язку — бот повернувся туди.")
 

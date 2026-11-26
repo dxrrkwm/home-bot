@@ -1,4 +1,4 @@
-# where the bot runs, its log and updates from github: "/where", "/log", "/update"
+# where the bot runs, its log and updates from github: "/where", "/log", "/update" (the hub also at night)
 import os
 import platform
 import subprocess
@@ -11,6 +11,9 @@ from app.paths import LOG, ROOT
 from app.telegram import Ctx
 
 NO_WINDOW = 0x08000000
+UPDATE_AT = 5  # hour of the nightly update on the hub
+
+_checked = {"day": None}
 
 
 def _git(*args: str) -> str:
@@ -89,6 +92,17 @@ def update(ctx: Ctx) -> None:
     ctx.send(f"🔄 Оновлено {before} → {after}, перезапускаюсь (до 3 хв).{note}")
     # the watchdog starts the new version
     threading.Thread(target=lambda: (time.sleep(3), os._exit(0)), daemon=True).start()
+
+
+def tick(ctx: Ctx) -> None:
+    # the hub takes new code from github once a night, nobody has to touch that pc
+    today = time.strftime("%Y-%m-%d")
+    if role.ROLE != "hub" or time.localtime().tm_hour != UPDATE_AT or _checked["day"] == today:
+        return
+    _checked["day"] = today
+    _git("fetch", "-q")
+    if _git("rev-list", "--count", "HEAD..@{u}") not in ("", "0"):
+        update(ctx)
 
 
 def handle(ctx: Ctx, text: str) -> bool:

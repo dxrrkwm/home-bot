@@ -49,26 +49,37 @@ def _connect() -> sqlite3.Connection:
     return db
 
 
-def merge(src) -> tuple:
-    # rows of another power.db (the laptop that covered for the hub) this one does not have yet
-    cols = ", ".join(("ts",) + SAMPLE_FIELDS)
-    with _lock, _connect() as db:
-        db.execute("attach database ? as other", (str(src),))
-        added = []
-        for table, key in (("samples", "ts"), ("events", "ts, kind")):
-            fields = cols if table == "samples" else "ts, kind, detail"
-            before = db.total_changes
-            db.execute(
-                f"insert into {table} ({fields}) select {fields} from other.{table} o "
-                f"where not exists (select 1 from {table} m where "
-                + " and ".join(f"m.{k} = o.{k}" for k in key.split(", "))
-                + ")"
-            )
-            added.append(db.total_changes - before)
-        db.commit()
-        db.execute("detach database other")
+SAMPLE_COLS = ", ".join(("ts",) + SAMPLE_FIELDS)
+
+
+def export(since: float, db_path=None) -> dict:
+    # samples and events from a moment on, to hand to another machine
+    db = sqlite3.connect(db_path) if db_path else _connect()
+    out = {
+        "samples": db.execute(f"select {SAMPLE_COLS} from samples where ts >= ?", (int(since),)).fetchall(),
+        "events": db.execute("select ts, kind, detail from events where ts >= ?", (int(since),)).fetchall(),
+    }
     db.close()
-    return tuple(added)
+    return out
+
+
+def add(samples: list, events: list) -> tuple:
+    # rows from another machine (the laptop that covered for the hub) this log does not have yet
+    with _lock, _connect() as db:
+        have_s = {r[0] for r in db.execute("select ts from samples")}
+        have_e = {tuple(r) for r in db.execute("select ts, kind from events")}
+        new_s = [list(r) for r in samples if r[0] not in have_s]
+        new_e = [list(r) for r in events if (r[0], r[1]) not in have_e]
+        marks = ", ".join("?" * (len(SAMPLE_FIELDS) + 1))
+        db.executemany(f"insert into samples ({SAMPLE_COLS}) values ({marks})", new_s)
+        db.executemany("insert into events (ts, kind, detail) values (?, ?, ?)", new_e)
+    db.close()
+    return len(new_s), len(new_e)
+
+
+def merge(src) -> tuple:
+    # another power.db file (a bundle)
+    return add(**export(0, src))
 
 
 def sample(ts: float | None = None, **fields) -> None:
