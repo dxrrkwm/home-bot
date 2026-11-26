@@ -34,7 +34,31 @@ def where() -> str:
     if not role.HAS_DEVICES:
         s = link.laptop_state()
         text += "\n💻 Ноут: на зв'язку." if s else f"\n💻 {link.OFFLINE[0].upper()}{link.OFFLINE[1:]}."
+    if copies := _copies():
+        text += "\n\n⚙️ Процеси:\n" + copies
     return text
+
+
+def _copies() -> str:
+    # every running bot on this pc: two of them make the watchdog restart both
+    script = (
+        "Get-CimInstance Win32_Process -Filter \"name like 'python%'\" | "
+        "? { $_.CommandLine -match 'bot\\.py|-m app' } | "
+        "% { '{0} <- {1} {2:dd.MM HH:mm} {3} | {4}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate, "
+        "$_.ExecutablePath, $_.CommandLine }"
+    )
+    try:
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            creationflags=NO_WINDOW,
+            timeout=30,
+        )
+        return out.stdout.strip()
+    except Exception as e:
+        return repr(e)
 
 
 def tail(lines: int = 25) -> str:
