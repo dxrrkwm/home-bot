@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 import re
 import threading
@@ -16,6 +17,7 @@ REPEAT_RE = re.compile(r"\s*(?:кожні\s+(\d+)\s*(хв|мин|м|год|ча�
 
 REPEAT_MIN = 10  # until "done" is pressed, like pills
 GIVE_UP_HOURS = 8
+DAY_HOURS = range(10, 23)  # "day_only" reminders wait for these hours
 SNOOZE_MIN = 30
 
 HELP = (
@@ -121,6 +123,25 @@ def _remove(rid: str) -> dict | None:
     return found
 
 
+def add_repeating(rid: str, text: str, every: int, days: int = 4) -> None:
+    # a monthly task that pings in the daytime until "done" or until close(rid) (e.g. the file came)
+    now = time.time()
+    with _lock:
+        items = [r for r in load() if r["id"] != rid]
+        items.append(
+            {"id": rid, "ts": now, "at": now, "text": text, "every": every, "give_up": days * 24, "day_only": True}
+        )
+        save(items)
+
+
+def close(prefix: str) -> list:
+    with _lock:
+        items = load()
+        gone = [r for r in items if r["id"].startswith(prefix)]
+        save([r for r in items if not r["id"].startswith(prefix)])
+    return gone
+
+
 def panel_list() -> list:
     return [
         {"id": r["id"], "ts": int(r["ts"]), "text": r["text"], "every": r["every"]}
@@ -203,8 +224,15 @@ def tick(ctx: Ctx) -> None:
             if r["ts"] > now:
                 keep.append(r)
                 continue
+            if r.get("day_only") and dt.datetime.now().hour not in DAY_HOURS:
+                morning = dt.datetime.now().replace(hour=DAY_HOURS[0], minute=0, second=0)
+                if morning.timestamp() < now:
+                    morning += dt.timedelta(days=1)
+                r["ts"] = morning.timestamp()
+                keep.append(r)
+                continue
             r["pings"] = r.get("pings", 0) + 1
-            again = r["every"] and now - r.get("at", r["ts"]) < GIVE_UP_HOURS * 3600
+            again = r["every"] and now - r.get("at", r["ts"]) < r.get("give_up", GIVE_UP_HOURS) * 3600
             if again:
                 r["ts"] = now + r["every"] * 60
                 keep.append(r)
@@ -217,6 +245,9 @@ def tick(ctx: Ctx) -> None:
         elif now - r.get("at", now) > 300:
             text += "\n(із запізненням — ноут був вимкнений)"
         ctx.send(text, inline=_ping_buttons(r) if again else None)
-    for key, msg in planner.pending():
-        ctx.send(msg)
+    for key, msg, every in planner.pending():
+        if every:
+            add_repeating(key, msg, every)
+        else:
+            ctx.send(msg)
         planner.mark(key)

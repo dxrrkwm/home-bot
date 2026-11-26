@@ -31,6 +31,12 @@ def api(token: str, method: str, **params) -> dict:
         raise
 
 
+def download(token: str, file_id: str) -> bytes:
+    path = api(token, "getFile", file_id=file_id)["result"]["file_path"]
+    with urllib.request.urlopen(f"https://api.telegram.org/file/bot{token}/{path}", timeout=60) as r:
+        return r.read()
+
+
 @contextmanager
 def redirected(target):
     _local.target = target

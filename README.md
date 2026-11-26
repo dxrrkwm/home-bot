@@ -76,6 +76,15 @@ by itself when the band shows the sleep finished or after 14 h. Shifts (12 h, da
 the panel calendar (`shift:YYYY-MM-DD` cycles day, night, none; `shifts.json`, not in git); the bot tells when to go
 to bed before a day shift and when to nap before a night one. Panel: `band-panel`.
 
+## Shift schedule and salary
+
+`services/shifts.py`: the monthly schedule sheet as csv, sent to the chat as a file (or
+`python -m app.services.shifts import FILE.csv`): my main and extra hours by date, the month from the file name.
+`допка 21.12 9-21` / `зміна 21.12 9-21` adds a shift taken later, kept until the next import has it.
+`config.json` `pay` (rates, extra limits, KPI, payday) turns the hours into a salary estimate: in the money
+summary, the panel finance screen and the import answer. `planner.json` items with `every` ping in the daytime
+until done (the schedule reminder on the 27th, closed by the import). Outage warnings say when they hit a shift.
+
 ## Power log
 
 `power.db` (sqlite, not in git): a sample every minute from `features/power.py` (station %, mode, AC, in/out W,

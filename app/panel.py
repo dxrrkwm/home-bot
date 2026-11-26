@@ -13,9 +13,11 @@ publish = relay.publish
 
 
 def publish_finance() -> None:
-    data = mono.panel_data(config.load().get("daily_budget", 280))
+    cfg = config.load()
+    data = mono.panel_data(cfg.get("daily_budget", 280))
     if data:
         data["syncing"] = mono.is_syncing()
+        data["salary"] = money.salary(cfg)
         publish("fin", data)
 
 

@@ -9,6 +9,12 @@
       "day": 7,
       "id": "rent",
       "text": "💸 Salary day: pay the rent."
+    },
+    {
+      "day": 27,
+      "id": "schedule",
+      "every": 60,
+      "text": "📅 Send the shift schedule for next month (csv) to this chat."
     }
   ],
   "birthdays": [

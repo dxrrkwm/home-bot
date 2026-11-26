@@ -1,8 +1,9 @@
+import datetime as dt
 import time
 
 from app import keyboards as kb
 from app.log import log
-from app.services import mono
+from app.services import mono, shifts
 from app.telegram import Ctx
 
 HELP = (
@@ -24,10 +25,56 @@ def age() -> float:
     return time.time() - mono.INFO_PATH.stat().st_mtime if mono.INFO_PATH.exists() else 1e9
 
 
+MONTHS = ["січень", "лютий", "березень", "квітень", "травень", "червень", "липень", "серпень", "вересень", "жовтень", "листопад", "грудень"]  # fmt: skip
+
+
+def uah(n: float) -> str:
+    return f"{n:,.0f}".replace(",", " ")
+
+
+def salary(cfg: dict) -> list:
+    # estimates from the shift schedule: the month still to be paid (till payday), this one and the next if known
+    pay, today = cfg.get("pay"), dt.date.today()
+    if not pay:
+        return []
+    prev = (today.replace(day=1) - dt.timedelta(days=1)).replace(day=1)
+    nxt = (today.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+    months = ([prev] if today.day <= pay.get("payday", 7) else []) + [today.replace(day=1), nxt]
+    out = []
+    for m in months:
+        s = shifts.salary(m.year, m.month, pay)
+        if s:
+            paid = (m.replace(day=28) + dt.timedelta(days=4)).replace(day=pay.get("payday", 7))
+            h = s["hours"]
+            out.append(
+                {
+                    "month": MONTHS[m.month - 1],
+                    "total": s["total"],
+                    "base": s["base"],
+                    "extra": s["extra"],
+                    "kpi": s["kpi"],
+                    "hours": round(sum(h.values())),
+                    "extra_hours": round(h["extra_day"] + h["extra_night"]),
+                    "paid": f"{paid:%d.%m}",
+                }
+            )
+    return out
+
+
+def salary_text(cfg: dict) -> str:
+    lines = [
+        f"• {s['month']}: {s['hours']} год (доп. {s['extra_hours']}) ≈ {uah(s['total'])} грн, прийде ~{s['paid']}"
+        for s in salary(cfg)
+    ]
+    return "💼 Зарплата за графіком (орієнтовно, з KPI):\n" + "\n".join(lines) if lines else ""
+
+
 def summary(cfg: dict) -> str:
     if not mono.token():
         return HELP
     s = mono.summary(cfg.get("daily_budget", 280))
+    if s and (pay := salary_text(cfg)):
+        s += "\n\n" + pay
     return s or "⏳ Ще не тягнув виписку — зараз підтягну (≈ 2 хв, у mono ліміт 1 запит на хвилину)."
 
 

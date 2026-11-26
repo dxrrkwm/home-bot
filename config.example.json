@@ -13,5 +13,17 @@
   "panel_key": "<random base64url 32 bytes>",
   "panel_version": 7,
   "station_ups": false,
-  "mono_dir": ""
+  "mono_dir": "",
+  "pay": {
+    "day": 0,
+    "night": 0,
+    "extra_day": 0,
+    "extra_day_over": 0,
+    "extra_day_limit": 36,
+    "extra_night": 0,
+    "extra_night_over": 0,
+    "extra_night_limit": 24,
+    "kpi": 0,
+    "payday": 7
+  }
 }

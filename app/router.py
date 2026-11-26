@@ -104,6 +104,7 @@ def handle(ctx: Ctx, text: str) -> None:
 
 
 def handle_update(token: str, cfg: dict, upd: dict) -> None:
+    doc = None
     if "callback_query" in upd:
         cq = upd["callback_query"]
         chat = cq["message"]["chat"]["id"]
@@ -113,6 +114,7 @@ def handle_update(token: str, cfg: dict, upd: dict) -> None:
     elif "message" in upd:
         chat = upd["message"]["chat"]["id"]
         text = upd["message"].get("text", "")
+        doc = upd["message"].get("document")  # e.g. the shift schedule as csv
         msg_id = upd["message"]["message_id"]
         if "web_app_data" in upd["message"]:  # old panel buttons send commands this way
             text = upd["message"]["web_app_data"]["data"]
@@ -133,7 +135,10 @@ def handle_update(token: str, cfg: dict, upd: dict) -> None:
         log(f"чужий чат {chat} проігноровано")
         return
     with lock:
-        handle(ctx, text)
+        if doc:
+            band.document(ctx, doc)
+        else:
+            handle(ctx, text)
 
 
 def start_background() -> None:

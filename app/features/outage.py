@@ -6,7 +6,7 @@ from app import config
 from app import keyboards as kb
 from app.features import station as st
 from app.log import log
-from app.services import outage, station
+from app.services import outage, shifts, station
 from app.telegram import Ctx
 
 GROUP_RE = re.compile(r"^\s*(?:черга|очередь|група|группа)\s*(\d)\s*[.,]\s*(\d)\s*$", re.I)
@@ -68,8 +68,14 @@ def _warning(key: str, mins: int, start_at, end_at, maybe: bool) -> str | None:
     return msg
 
 
+def _on_shift(start_at, end_at) -> str:
+    # work goes through the internet: an outage during a shift is worth a second look
+    hit = next((s for s in shifts.all_shifts() if s[0] < end_at and start_at < s[1]), None)
+    return f"\n💼 Це під час твоєї зміни ({hit[0]:%H:%M}–{hit[1]:%H:%M}) — глянь заряд станції." if hit else ""
+
+
 def tick(ctx: Ctx) -> None:
     for key, mins, (start_at, end_at, maybe) in outage.due_warnings(ctx.cfg.get("outage_group")):
         if msg := _warning(key, mins, start_at, end_at, maybe):
-            ctx.send(msg)
+            ctx.send(msg + _on_shift(start_at, end_at))
         outage.mark(key)

@@ -1,18 +1,23 @@
 # the band as a remote: "сплю" and "встав" as quick replies to any bot message on the band,
 # plus bedtime tips for the 2/2 shifts and a short morning brief
 import datetime as dt
+import re
 import threading
 import time
 
 from app import config, devices
-from app.features import light, reminders
+from app.features import light, money, reminders
 from app.features import sleep as band_sleep
 from app.log import log
-from app.services import outage, pills, shifts, sleep, sleepmode
-from app.telegram import Ctx
+from app.services import outage, pills, planner, shifts, sleep, sleepmode
+from app.telegram import Ctx, download
 
 SLEEP, WAKE, PANEL = "band:sleep", "band:wake", "band-panel"
 SHIFT_RE_PREFIX = "shift:"
+# "допка 19.12 9-21" (extra hours) or "зміна 19.12 9-21" (a main shift), taken after the schedule came out
+ADD_RE = re.compile(
+    r"^(допк\w*|доп|зміна|смена)\s+(\d{1,2})\.(\d{1,2})\s+(\d{1,2})(?::00)?\s*[-–]\s*(\d{1,2})(?::00)?$", re.I
+)
 NEED_MIN = 8 * 60
 FALL_ASLEEP_MIN = 15
 GET_READY_MIN = 45  # from waking up to the start of a day shift (works from home)
@@ -57,6 +62,9 @@ def advice(now: dt.datetime | None = None) -> str | None:
     if cur:
         return f"Зараз {shifts.NAMES[cur[2]]} зміна до {cur[1]:%H:%M}."
     if prev and prev[2] == "night" and now - prev[1] < dt.timedelta(hours=3):
+        if nxt and nxt[0] - now < dt.timedelta(hours=4):
+            # back to back: no real sleep fits in, at least a short nap
+            return f"Після нічної одразу {shifts.label(nxt, now)} — подрімай хоч 20–40 хв, відсипайся після {nxt[1]:%H:%M}."
         wake = min(prev[1] + dt.timedelta(hours=8, minutes=30), nxt[0] - dt.timedelta(hours=2)) if nxt else None
         return "Після нічної — спати одразу" + (f", до ~{wake:%H:%M}." if wake else ".")
     if not nxt or nxt[0] - now > dt.timedelta(hours=36):
@@ -181,7 +189,66 @@ def wake_up(ctx: Ctx, lamp: bool = True) -> None:
     threading.Thread(target=run, daemon=True).start()
 
 
+def import_schedule(name: str, data: bytes) -> str:
+    # the monthly infocus sheet: my shifts go to shifts.json, the monthly reminder stops
+    ym = shifts.month_of(name)
+    if not ym:
+        return "📅 Не зрозумів, за який це місяць — у назві файлу має бути місяць (як у таблиці infocus)."
+    try:
+        got = shifts.import_month(data.decode("utf-8-sig"), *ym)
+    except StopIteration:
+        return f"📅 Не знайшов у файлі свій рядок ({shifts.ME})."
+    year, month = ym
+    reminders.close("schedule:")
+    prev = dt.date(year, month, 1) - dt.timedelta(days=1)
+    planner.mark(f"schedule:{prev:%Y-%m}")
+    main = [s for items in got.values() for s in items if not s["extra"]]
+    nights = sum(1 for s in main if s["to"] <= s["from"])
+    extra = sum(1 for items in got.values() for s in items if s["extra"])
+    lines = [
+        f"📅 Графік на {money.MONTHS[month - 1]}: {len(main)} змін ({len(main) - nights} денних, {nights} нічних)"
+        + (f", ще {extra} додаткових." if extra else ".")
+    ]
+    if pay := next((p for p in money.salary(config.load()) if p["month"] == money.MONTHS[month - 1]), None):
+        lines.append(f"{pay['hours']} год → ≈ {money.uah(pay['total'])} грн з KPI, прийде ~{pay['paid']}.")
+    lines.append("Поради, коли лягати, — перед кожною зміною, все у вкладці «Браслет».")
+    _changed()
+    return "\n".join(lines)
+
+
+def document(ctx: Ctx, doc: dict) -> None:
+    name = doc.get("file_name", "")
+    if not name.lower().endswith(".csv"):
+        ctx.send("📎 Файли розумію лише одного виду: графік змін у CSV (таблиця infocus → Файл → Завантажити → CSV).")
+        return
+    try:
+        ctx.send(import_schedule(name, download(ctx.token, doc["file_id"])))
+    except Exception as e:
+        log(f"графік: {e!r}")
+        ctx.send(f"📅 Не вийшло прочитати графік: {e}")
+
+
+def add_shift(ctx: Ctx, m: re.Match) -> None:
+    today = dt.date.today()
+    day = dt.date(today.year, int(m[3]), int(m[2]))
+    if day < today - dt.timedelta(days=60):
+        day = day.replace(year=today.year + 1)
+    extra = m[1].lower().startswith("доп")
+    shifts.add(day.isoformat(), f"{int(m[4]) % 24:02d}:00", f"{int(m[5]) % 24:02d}:00", extra)
+    what = "Допку" if extra else "Зміну"
+    lines = [f"👌 {what} {day:%d.%m} {int(m[4]):02d}:00–{int(m[5]) % 24:02d}:00 внесено."]
+    if pay := next((p for p in money.salary(config.load()) if p["month"] == money.MONTHS[day.month - 1]), None):
+        lines.append(
+            f"{money.MONTHS[day.month - 1].capitalize()}: {pay['hours']} год → ≈ {money.uah(pay['total'])} грн з KPI."
+        )
+    _changed()
+    ctx.send("\n".join(lines))
+
+
 def handle(ctx: Ctx, text: str) -> bool:
+    if m := ADD_RE.match(text.strip()):
+        add_shift(ctx, m)
+        return True
     if text == SLEEP:
         go_to_sleep(ctx)
     elif text == WAKE:
@@ -230,9 +297,18 @@ def panel_data() -> dict:
     since = sleepmode.since()
     sleep_data = band_sleep.panel_data()
     work = {}
-    for start, end, kind in shifts.all_shifts():
+    for start, end, _, extra in shifts.all_shifts():
         for day, a, b in _pieces(start, end):
-            work.setdefault(day, []).append([a, b])
+            work.setdefault(day, []).append([a, b, extra])
+    # calendar cells: the preset (day / night) or own hours, and extra hours of the date
+    calendar = {
+        day: {
+            "p": shifts.preset(day),
+            "from": next((s["from"][:2].lstrip("0") or "0" for s in sorted(items, key=lambda s: s["extra"])), None),
+            "extra": any(s["extra"] for s in items),
+        }
+        for day, items in shifts.load().items()
+    }
     d = debt()
     nxt = shifts.upcoming(now)
     return {
@@ -241,7 +317,7 @@ def panel_data() -> dict:
         "next": shifts.label(nxt, now) if nxt else None,
         "advice": advice(now),
         "debt": {"min": d[0], "days": d[1]} if d else None,
-        "shifts": shifts.load(),
+        "shifts": calendar,
         "work": work,
         "sleep": sleep_data,
         "today": now.date().isoformat(),

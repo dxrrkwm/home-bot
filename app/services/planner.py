@@ -30,7 +30,7 @@ def _save(s):
 
 
 def due(now=None):
-    # [(key, text)] that are due now
+    # [(key, text, every)] that are due now; every: minutes between pings until "done", 0 for one message
     now = now or dt.datetime.now()
     if now.hour < SEND_FROM_HOUR:
         return []
@@ -38,7 +38,7 @@ def due(now=None):
     for m in plan.get("monthly", []):
         d = today.replace(day=m["day"])
         if d <= today <= d + dt.timedelta(days=3):
-            out.append((f"{m['id']}:{d:%Y-%m}", m["text"]))
+            out.append((f"{m['id']}:{d:%Y-%m}", m["text"], m.get("every", 0)))
     for b in plan.get("birthdays", []):
         who, key = b["who"], b["id"]
         for year in (today.year, today.year + 1):
@@ -49,16 +49,17 @@ def due(now=None):
                     (
                         f"bd-week:{key}:{year}",
                         f"🎁 Через {(bd - today).days} дн. ({bd:%d.%m}) день народження {who}. Час подумати про подарунок.",
+                        0,
                     )
                 )
             if bd <= today <= bd + dt.timedelta(days=1):
-                out.append((f"bd-day:{key}:{year}", f"🎉 Сьогодні день народження {who}! Привітай."))
+                out.append((f"bd-day:{key}:{year}", f"🎉 Сьогодні день народження {who}! Привітай.", 0))
     return out
 
 
 def pending(now=None):
     sent = _load()
-    return [(k, t) for k, t in due(now) if k not in sent]
+    return [x for x in due(now) if x[0] not in sent]
 
 
 def mark(key):
