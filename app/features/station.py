@@ -5,7 +5,7 @@ import time
 from app import config, devices, relay
 from app import keyboards as kb
 from app.log import log
-from app.services import outage, powerlog, station
+from app.services import outage, powerlog, sleepmode, station
 from app.telegram import Ctx
 
 WEEKLY_AT = (0, 10)  # monday 10:00
@@ -153,9 +153,13 @@ def _grid_back(ctx: Ctx, s: dict) -> None:
         spent = f"витрачено {used}%" if used else "заряд не змінився"
         msg += f" Без світла було {station.fmt_mins((time.time() - start[0]) / 60)}, станція {s['pct']}% ({spent})."
     inline = None
-    if ctx.cfg.get("station_auto_eco", True) and devices.is_eco() and devices.switch("normal"):
-        msg += "\n⚡ Повернув звичайний режим."
-        inline = [[{"text": "🔋 Лишити еко", "callback_data": "eco"}]]
+    if ctx.cfg.get("station_auto_eco", True) and devices.is_eco():
+        if sleepmode.active():
+            sleepmode.hold_eco()
+            msg += "\n🌙 Ти спиш — Еко лишаю, звичайний поверну, як прокинешся."
+        elif devices.switch("normal"):
+            msg += "\n⚡ Повернув звичайний режим."
+            inline = [[{"text": "🔋 Лишити еко", "callback_data": "eco"}]]
     ctx.send(msg, inline=inline)
 
 

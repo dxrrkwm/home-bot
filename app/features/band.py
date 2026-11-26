@@ -286,6 +286,14 @@ def _sleepy_hours(now: dt.datetime) -> bool:
     return now.hour >= AUTO_NIGHT[0] or now.hour < AUTO_NIGHT[1] or bool(after_night)
 
 
+def _finish() -> None:
+    # the sleep ends without the brief; the normal mode comes back if the sleep held eco
+    session = sleepmode.end()
+    if session and session["eco"] and devices.power()[0]:
+        devices.switch("normal")
+    _changed()
+
+
 def _auto(ctx: Ctx) -> None:
     # the laptop tells when nobody uses it: silent messages at night, sound back on the first touch
     idle = devices.idle_sec()
@@ -296,8 +304,7 @@ def _auto(ctx: Ctx) -> None:
         if time.time() - since >= AUTO_BRIEF_SEC:
             wake_up(ctx, lamp=False)
         else:
-            sleepmode.end()
-            _changed()
+            _finish()
     elif not since and idle >= AUTO_IDLE_SEC and _sleepy_hours(dt.datetime.now()):
         sleepmode.begin(eco_by_us=False, auto=True, since=time.time() - idle)
         log("сон: ноут без руху вночі, повідомлення без звуку")
@@ -307,8 +314,7 @@ def _auto(ctx: Ctx) -> None:
 def tick(ctx: Ctx) -> None:
     _auto(ctx)
     if sleepmode.overdue():
-        sleepmode.end()
-        _changed()
+        _finish()
     since = sleepmode.since()
     if since:
         # the band already shows this sleep as finished: "встав" was forgotten

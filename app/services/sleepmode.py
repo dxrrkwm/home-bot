@@ -35,6 +35,13 @@ def begin(eco_by_us: bool, auto: bool = False, since: float | None = None) -> No
     _save(s)
 
 
+def hold_eco() -> None:
+    # eco stays until the wake up, then the normal mode comes back
+    s = _load()
+    s["eco"] = True
+    _save(s)
+
+
 def is_auto() -> bool:
     return active() and bool(_load().get("auto"))
 
