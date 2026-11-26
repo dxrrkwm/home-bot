@@ -1,4 +1,4 @@
-# where the bot runs and updates from github: "/where", "/update"
+# where the bot runs, its log and updates from github: "/where", "/log", "/update"
 import os
 import platform
 import subprocess
@@ -7,7 +7,7 @@ import threading
 import time
 
 from app import link, role
-from app.paths import ROOT
+from app.paths import LOG, ROOT
 from app.telegram import Ctx
 
 NO_WINDOW = 0x08000000
@@ -37,6 +37,14 @@ def where() -> str:
     return text
 
 
+def tail(lines: int = 25) -> str:
+    # the end of the log where the bot runs, the hub's one is not reachable otherwise
+    if not LOG.exists():
+        return "📄 Лог порожній."
+    rows = LOG.read_text(encoding="utf-8", errors="replace").splitlines()[-lines:]
+    return "📄 Лог:\n" + "\n".join(r[:200] for r in rows)
+
+
 def update(ctx: Ctx) -> None:
     before = _git("rev-parse", "--short", "HEAD")
     pulled = _git("pull", "--ff-only")
@@ -60,6 +68,8 @@ def update(ctx: Ctx) -> None:
 def handle(ctx: Ctx, text: str) -> bool:
     if text in ("/where", "де бот", "где бот"):
         ctx.send(where())
+    elif text in ("/log", "лог"):
+        ctx.send(tail())
     elif text in ("/update", "оновити бота", "обновить бота"):
         update(ctx)
     else:
