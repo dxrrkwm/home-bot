@@ -13,7 +13,8 @@ from app.services import outage, pills, planner, shifts, sleep, sleepmode
 from app.telegram import Ctx, download
 
 SLEEP, WAKE, PANEL = "band:sleep", "band:wake", "band-panel"
-SHIFT_SET = "shiftset:"  # shiftset:2026-12-21:day|night|off from the panel calendar
+# from the panel calendar: shiftset:2026-12-21:10-22 or :off, extraadd:2026-12-21:22-23, extradel:...
+SHIFT_SET, EXTRA_ADD, EXTRA_DEL = "shiftset:", "extraadd:", "extradel:"
 # "допка 19.12 9-21" (extra hours) or "зміна 19.12 9-21" (a main shift), taken after the schedule came out
 ADD_RE = re.compile(
     r"^(допк\w*|доп|зміна|смена)\s+(\d{1,2})\.(\d{1,2})\s+(\d{1,2})(?::00)?\s*[-–]\s*(\d{1,2})(?::00)?$", re.I
@@ -253,9 +254,15 @@ def handle(ctx: Ctx, text: str) -> bool:
         go_to_sleep(ctx)
     elif text == WAKE:
         wake_up(ctx)
-    elif text.startswith(SHIFT_SET):
-        day, _, kind = text[len(SHIFT_SET) :].partition(":")
-        shifts.set_main(day, kind if kind in shifts.PRESETS else None)
+    elif text.startswith((SHIFT_SET, EXTRA_ADD, EXTRA_DEL)):
+        cmd, day, hours = text.split(":")
+        start, end = map(int, hours.split("-")) if hours != "off" else (None, None)
+        if cmd + ":" == SHIFT_SET:
+            shifts.set_main(day, start, end)
+        elif cmd + ":" == EXTRA_ADD:
+            shifts.add(day, shifts.hour(start), shifts.hour(end))
+        else:
+            shifts.remove_extra(day, start, end)
         _changed()
     else:
         return False
@@ -311,9 +318,10 @@ def panel_data() -> dict:
         main = next((s for s in items if not s["extra"]), None)
         extra = [s for s in items if s["extra"]]
         calendar[day] = {
-            "p": shifts.preset(day),
             "main": _hours(main) if main else None,
-            "extra": ", ".join(map(_hours, extra)) or None,
+            "night": shifts.preset(day) == "night",
+            "extras": [_hours(s) for s in extra],
+            "extra_h": round(sum((b - a).total_seconds() for a, b in (shifts._span(day, s) for s in extra)) / 3600),
         }
     d = debt()
     nxt = shifts.upcoming(now)
@@ -324,6 +332,7 @@ def panel_data() -> dict:
         "advice": advice(now),
         "debt": {"min": d[0], "days": d[1]} if d else None,
         "shifts": calendar,
+        "common": [f"{a}–{b}" for a, b in shifts.common()],
         "work": work,
         "sleep": sleep_data,
         "today": now.date().isoformat(),

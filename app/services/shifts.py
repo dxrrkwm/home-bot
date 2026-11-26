@@ -56,14 +56,38 @@ def preset(day: str) -> str | None:
     return kind(*_span(day, main[0]))
 
 
-def set_main(day: str, kind: str | None) -> None:
-    # the panel calendar: the main shift of a date becomes a preset or an off day, extra hours stay
+def hour(h: int) -> str:
+    return f"{int(h) % 24:02d}:00"
+
+
+def set_main(day: str, start: int | None = None, end: int | None = None) -> None:
+    # the panel calendar: own hours for the main shift of a date, or an off day; extra hours stay
     items = load()
     keep = [s for s in items.get(day, []) if s["extra"]]
-    if kind:
-        keep.insert(0, {"from": PRESETS[kind][0], "to": PRESETS[kind][1], "extra": False, "manual": True})
+    if start is not None:
+        keep.insert(0, {"from": hour(start), "to": hour(end), "extra": False, "manual": True})
     items[day] = keep
     _save(items)
+
+
+def remove_extra(day: str, start: int, end: int) -> None:
+    items = load()
+    items[day] = [
+        s for s in items.get(day, []) if not (s["extra"] and (s["from"], s["to"]) == (hour(start), hour(end)))
+    ]
+    _save(items)
+
+
+def common(limit: int = 6) -> list:
+    # the usual main shifts ("10-22", "20-8"), most frequent first: quick picks in the panel
+    count = {}
+    for items in load().values():
+        for s in items:
+            if not s["extra"]:
+                key = (int(s["from"][:2]), int(s["to"][:2]))
+                count[key] = count.get(key, 0) + 1
+    picks = sorted(count, key=lambda k: -count[k])[:limit]
+    return sorted(picks, key=lambda k: (k[1] < k[0], k[0]))  # day shifts by the start, nights last
 
 
 def all_shifts(extra: bool = True) -> list:
