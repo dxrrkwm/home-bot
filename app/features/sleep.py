@@ -10,7 +10,7 @@ from app.telegram import Ctx
 
 SHOW, FORCE = "sleep", "sleep:force"
 STATE = ROOT / "sleep_state.json"
-CHECK_SEC = 30 * 60
+CHECK_SEC = 15 * 60  # mi fitness uploads about once an hour, catch it soon after
 RETRY_SEC = 15 * 60
 MIN_SLEEP = 90  # shorter ones are naps: they count in the totals but get no message
 FRESH_SEC = 18 * 3600  # older sleeps that show up late (band was not synced) are not announced

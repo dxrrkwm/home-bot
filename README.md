@@ -63,7 +63,7 @@ comes as one message with a picture and shop links. Chat: `ціни`, `онов�
 (daily reports: phases, score, heart rate, naps). Log in once with `python -m app.services.sleep login`
 (`XIAOMI_USER` / `XIAOMI_PASSWORD` from `.env`); if Xiaomi asks to confirm the device, a code comes by email:
 `python -m app.services.sleep code 123456`. Only the session is kept, in `xiaomi_session.json` (not in git),
-it refreshes itself for months. Every 30 min the bot pulls the last days; a new sleep longer than 1.5 h
+it refreshes itself for months. Mi Fitness uploads about once an hour (its own alarm), the bot checks every 15 min; a new sleep longer than 1.5 h
 comes as a short message (shift work: a "night" can be in the day). Chat: `сон`, `оновити сон`.
 Panel: `sleep-panel`, `sleep-panel:force` (last sleep, 14 days of hours, when the sleep was).
 
