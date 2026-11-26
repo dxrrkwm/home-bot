@@ -3,7 +3,7 @@ import threading
 
 from app import config
 from app import keyboards as kb
-from app.features import laptop, light, menu, money, outage, pills, power, prices, reminders, station, system
+from app.features import laptop, light, menu, money, outage, pills, power, prices, reminders, sleep, station, system
 from app.log import log
 from app.telegram import Ctx, api
 
@@ -11,9 +11,9 @@ from app.telegram import Ctx, api
 lock = threading.Lock()
 
 # order matters: the first feature that understands the text answers, menu catches the rest
-FEATURES = [system, pills, station, outage, reminders, light, laptop, money, prices, menu]
+FEATURES = [system, pills, station, outage, reminders, light, laptop, money, prices, sleep, menu]
 # features with background work: start() once, tick(ctx) on every loop
-BACKGROUND = [station, outage, power, reminders, pills, money, prices]
+BACKGROUND = [station, outage, power, reminders, pills, money, prices, sleep]
 
 # short words, e.g. quick replies from the smart band
 ALIASES = {
@@ -53,6 +53,9 @@ ALIASES = {
     "энергетики": prices.SHOW,
     "оновити ціни": prices.FORCE,
     "обновить цены": prices.FORCE,
+    "сон": sleep.SHOW,
+    "оновити сон": sleep.FORCE,
+    "обновить сон": sleep.FORCE,
     "назад": kb.BACK,
     "меню": kb.BACK,
     "пк": kb.PC,

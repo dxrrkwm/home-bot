@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from app import sync
 from app.paths import CONFIG, ROOT
 
-EXTRA = [".env", "power.db", "station_history.csv"]
+EXTRA = [".env", "power.db", "station_history.csv", "xiaomi_session.json"]
 LAPTOP_ONLY = ["lamp", "mono_dir", "role"]  # the lamp is reached through the agent, mono_dir is a laptop path
 
 

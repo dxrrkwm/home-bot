@@ -2,7 +2,7 @@
 import threading
 
 from app import config, keyboards, relay, router, telegram
-from app.features import light, money, prices, reminders, station
+from app.features import light, money, prices, reminders, sleep, station
 from app.log import log
 from app.services import mono
 
@@ -47,6 +47,18 @@ def _prices(force: bool = False) -> None:
     publish_prices()
 
 
+def publish_sleep() -> None:
+    data = sleep.panel_data()
+    if data:
+        publish("sleep", data)
+
+
+def _sleep(force: bool = False) -> None:
+    if force or sleep.stale():
+        sleep.refresh(telegram.Ctx(*_chat()))
+    publish_sleep()
+
+
 def _chat() -> tuple:
     cfg = config.load()
     return cfg["token"], cfg["chat_id"], cfg
@@ -64,6 +76,7 @@ REQUESTS = {
     "station-panel": lambda arg: _station(arg == "force"),
     "rem-list": lambda arg: publish("reminders", reminders.panel_list()),
     "prices-panel": lambda arg: _prices(arg == "force"),
+    "sleep-panel": lambda arg: _sleep(arg == "force"),
 }
 
 
@@ -97,4 +110,5 @@ def start() -> None:
     threading.Thread(target=_menu_button, daemon=True).start()
     money.on_synced.append(publish_finance)
     prices.on_checked.append(publish_prices)
+    sleep.on_synced.append(publish_sleep)
     relay.start(_command)

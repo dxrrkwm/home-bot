@@ -34,9 +34,9 @@ app/
   devices.py           laptop and lamp: local or through the agent
   sync.py              state files follow the running bot through the broker
   bundle.py            encrypted settings and state for a new hub
-  config.py, paths.py, log.py
+  config.py, paths.py, env.py, log.py
   features/            one module per feature: handle(ctx, text) -> bool, optional start() and tick(ctx)
-  services/            integrations without telegram: laptop, lamp, mono, station, outage, pills, planner, powerlog, prices
+  services/            integrations without telegram: laptop, lamp, mono, station, outage, pills, planner, powerlog, prices, sleep
 ```
 
 ## Power station modes
@@ -56,6 +56,16 @@ Drinks are compared per can, bars per 100 g, "from N pieces" offers count when a
 Every 4 hours in the daytime: anything at or below the target that was not announced yet (or got cheaper)
 comes as one message with a picture and shop links. Chat: `ціни`, `оновити ціни`, `ціль енергетик 33`,
 `ціль батончик 55`. Panel: `prices-panel`, `prices-panel:force`.
+
+## Sleep
+
+`features/sleep.py` + `services/sleep.py`: sleep from the Xiaomi band through the Mi Fitness cloud
+(daily reports: phases, score, heart rate, naps). Log in once with `python -m app.services.sleep login`
+(`XIAOMI_USER` / `XIAOMI_PASSWORD` from `.env`); if Xiaomi asks to confirm the device, a code comes by email:
+`python -m app.services.sleep code 123456`. Only the session is kept, in `xiaomi_session.json` (not in git),
+it refreshes itself for months. Every 30 min the bot pulls the last days; a new sleep longer than 1.5 h
+comes as a short message (shift work: a "night" can be in the day). Chat: `сон`, `оновити сон`.
+Panel: `sleep-panel`, `sleep-panel:force` (last sleep, 14 days of hours, when the sleep was).
 
 ## Power log
 

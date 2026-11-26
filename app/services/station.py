@@ -14,10 +14,11 @@ from base64 import b64encode
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad
 
+from app.env import ENV, PLACEHOLDER
+from app.env import read as read_env
 from app.paths import ROOT
 from app.services import powerlog
 
-ENV = ROOT / ".env"
 STATE = ROOT / "station_state.json"
 
 CAPACITY_WH = 1024  # P1000E Plus
@@ -40,21 +41,6 @@ SERVERS = {
 USER_DOMAIN = "E.SP.4294967410"
 USER_DOMAIN_SECRET = "3aRNUwWahjyANa7WfBK2wCCkxCexB6nXxKJwXxfePvzf"
 APP_ID, APP_VER = "277", "3.7.5"
-
-PLACEHOLDER = "ВСТАВ_СЮДИ"
-
-
-def read_env():
-    out = {}
-    try:
-        for line in ENV.read_text(encoding="utf-8-sig").splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                out[k.strip()] = v.strip().strip('"').strip("'")
-    except FileNotFoundError:
-        pass
-    return out
 
 
 def ensure_env_template():
