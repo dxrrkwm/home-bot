@@ -13,7 +13,7 @@ from app.services import outage, pills, planner, shifts, sleep, sleepmode
 from app.telegram import Ctx, download
 
 SLEEP, WAKE, PANEL = "band:sleep", "band:wake", "band-panel"
-SHIFT_RE_PREFIX = "shift:"
+SHIFT_SET = "shiftset:"  # shiftset:2026-12-21:day|night|off from the panel calendar
 # "допка 19.12 9-21" (extra hours) or "зміна 19.12 9-21" (a main shift), taken after the schedule came out
 ADD_RE = re.compile(
     r"^(допк\w*|доп|зміна|смена)\s+(\d{1,2})\.(\d{1,2})\s+(\d{1,2})(?::00)?\s*[-–]\s*(\d{1,2})(?::00)?$", re.I
@@ -253,8 +253,9 @@ def handle(ctx: Ctx, text: str) -> bool:
         go_to_sleep(ctx)
     elif text == WAKE:
         wake_up(ctx)
-    elif text.startswith(SHIFT_RE_PREFIX):
-        shifts.cycle(text[len(SHIFT_RE_PREFIX) :])
+    elif text.startswith(SHIFT_SET):
+        day, _, kind = text[len(SHIFT_SET) :].partition(":")
+        shifts.set_main(day, kind if kind in shifts.PRESETS else None)
         _changed()
     else:
         return False
@@ -292,6 +293,10 @@ def _pieces(start: dt.datetime, end: dt.datetime) -> list:
     return out
 
 
+def _hours(s: dict) -> str:
+    return f"{int(s['from'][:2])}–{int(s['to'][:2])}"
+
+
 def panel_data() -> dict:
     now = dt.datetime.now()
     since = sleepmode.since()
@@ -300,15 +305,16 @@ def panel_data() -> dict:
     for start, end, _, extra in shifts.all_shifts():
         for day, a, b in _pieces(start, end):
             work.setdefault(day, []).append([a, b, extra])
-    # calendar cells: the preset (day / night) or own hours, and extra hours of the date
-    calendar = {
-        day: {
+    # calendar cells: hours of the main shift ("8–20"), night or not, hours of the extra ones
+    calendar = {}
+    for day, items in shifts.load().items():
+        main = next((s for s in items if not s["extra"]), None)
+        extra = [s for s in items if s["extra"]]
+        calendar[day] = {
             "p": shifts.preset(day),
-            "from": next((s["from"][:2].lstrip("0") or "0" for s in sorted(items, key=lambda s: s["extra"])), None),
-            "extra": any(s["extra"] for s in items),
+            "main": _hours(main) if main else None,
+            "extra": ", ".join(map(_hours, extra)) or None,
         }
-        for day, items in shifts.load().items()
-    }
     d = debt()
     nxt = shifts.upcoming(now)
     return {

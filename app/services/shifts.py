@@ -9,7 +9,7 @@ import sys
 from app.paths import ROOT
 
 SHIFTS = ROOT / "shifts.json"  # {"2026-11-27": [{"from": "09:00", "to": "21:00", "extra": false}]}
-PRESETS = {"day": ("09:00", "21:00"), "night": ("21:00", "09:00")}
+PRESETS = {"day": ("09:00", "21:00"), "night": ("20:00", "08:00")}  # as in the infocus schedule
 NAMES = {"day": "денна", "night": "нічна"}
 NIGHT_FROM, NIGHT_TO = 21, 9  # hours in this window are paid as night ones
 ME = "@dxrrkwm"  # my row in the schedule, by telegram name
@@ -56,13 +56,12 @@ def preset(day: str) -> str | None:
     return kind(*_span(day, main[0]))
 
 
-def cycle(day: str) -> None:
-    # a tap in the panel calendar: off -> day -> night -> off; extra hours of that date stay
+def set_main(day: str, kind: str | None) -> None:
+    # the panel calendar: the main shift of a date becomes a preset or an off day, extra hours stay
     items = load()
     keep = [s for s in items.get(day, []) if s["extra"]]
-    nxt = {None: "day", "day": "night", "night": None}[preset(day)]
-    if nxt:
-        keep.insert(0, {"from": PRESETS[nxt][0], "to": PRESETS[nxt][1], "extra": False})
+    if kind:
+        keep.insert(0, {"from": PRESETS[kind][0], "to": PRESETS[kind][1], "extra": False, "manual": True})
     items[day] = keep
     _save(items)
 
