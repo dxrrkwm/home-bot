@@ -43,9 +43,9 @@ def _copies() -> str:
     # every running bot on this pc: two of them make the watchdog restart both
     script = (
         "Get-CimInstance Win32_Process -Filter \"name like 'python%'\" | "
-        "? { $_.CommandLine -match 'bot\\.py|-m app' } | "
-        "% { '{0} <- {1} {2:dd.MM HH:mm} {3} | {4}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate, "
-        "$_.ExecutablePath, $_.CommandLine }; "
+        "? { -not $_.CommandLine -or $_.CommandLine -match 'bot\\.py|-m app' } | "
+        "% { '{0} <- {1} s{2} {3:dd.MM HH:mm} {4:n0} MB {5} | {6}' -f $_.ProcessId, $_.ParentProcessId, $_.SessionId, "
+        "$_.CreationDate, ($_.PrivatePageCount / 1MB), $_.ExecutablePath, $_.CommandLine }; "
         "Get-ScheduledTask | ? { \"$($_.Actions.Execute) $($_.Actions.Arguments)\" -match 'watchdog|bot\\.py' } | "
         "% { 'task {0}{1}: {2}' -f $_.TaskPath, $_.TaskName, $_.Actions.Arguments }"
     )
