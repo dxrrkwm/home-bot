@@ -49,6 +49,28 @@ def _connect() -> sqlite3.Connection:
     return db
 
 
+def merge(src) -> tuple:
+    # rows of another power.db (the laptop that covered for the hub) this one does not have yet
+    cols = ", ".join(("ts",) + SAMPLE_FIELDS)
+    with _lock, _connect() as db:
+        db.execute("attach database ? as other", (str(src),))
+        added = []
+        for table, key in (("samples", "ts"), ("events", "ts, kind")):
+            fields = cols if table == "samples" else "ts, kind, detail"
+            before = db.total_changes
+            db.execute(
+                f"insert into {table} ({fields}) select {fields} from other.{table} o "
+                f"where not exists (select 1 from {table} m where "
+                + " and ".join(f"m.{k} = o.{k}" for k in key.split(", "))
+                + ")"
+            )
+            added.append(db.total_changes - before)
+        db.commit()
+        db.execute("detach database other")
+    db.close()
+    return tuple(added)
+
+
 def sample(ts: float | None = None, **fields) -> None:
     row = [int(ts or time.time())] + [fields.get(k) for k in SAMPLE_FIELDS]
     with _lock, _connect() as db:

@@ -18,6 +18,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app import sync
 from app.paths import CONFIG, ROOT
+from app.services import powerlog
 
 EXTRA = [".env", "power.db", "station_history.csv", "xiaomi_session.json"]
 LAPTOP_ONLY = ["lamp", "mono_dir", "role"]  # the lamp is reached through the agent, mono_dir is a laptop path
@@ -58,6 +59,14 @@ def unpack(src: Path) -> None:
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         for info in z.infolist():
             path = ROOT / info.filename
+            if info.filename == "power.db" and path.exists():
+                # the hub's own log stays, only the missing rows come in
+                tmp = ROOT / "power_import.db"
+                tmp.write_bytes(z.read(info))
+                samples, events = powerlog.merge(tmp)
+                tmp.unlink()
+                print(f"ok power.db: +{samples} samples, +{events} events")
+                continue
             path.write_bytes(z.read(info))
             # keep the time: the newer state wins when the bot starts (app.sync)
             ts = time.mktime(info.date_time + (0, 0, -1))
