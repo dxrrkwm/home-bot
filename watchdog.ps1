@@ -4,7 +4,10 @@ $dir = $PSScriptRoot
 $python = if ($Python) { $Python } elseif ($env:HOME_BOT_PYTHON) { $env:HOME_BOT_PYTHON } else { "$env:LOCALAPPDATA\Programs\Python\Python313\python.exe" }
 function Write-Log($m) { Add-Content "$dir\bot.log" "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') watchdog: $m" -Encoding utf8 }
 
-$bot = Get-CimInstance Win32_Process -Filter "Name like 'python%'" | ? { $_.CommandLine -match 'bot\.py' }
+# only this bot: other python apps on the pc may have their own bot.py (the hub pc runs a game server bot)
+$script = "$dir\bot.py"
+$bot = Get-CimInstance Win32_Process -Filter "Name like 'python%'" |
+    ? { $_.CommandLine -and ($_.CommandLine.Contains($script) -or $_.CommandLine -match '\sbot\.py\s*$') }
 if ($bot) {
     $hb = Get-Item "$dir\heartbeat.txt" -ea 0
     $age = if ($hb) { ((Get-Date) - $hb.LastWriteTime).TotalMinutes } else { 0 }
@@ -17,4 +20,4 @@ if ($bot) {
     Write-Log "bot was dead, restarting"
 }
 if ((Get-Item "$dir\bot_err.log" -ea 0).Length -gt 0) { Copy-Item "$dir\bot_err.log" "$dir\bot_err_$(Get-Date -Format yyyyMMdd_HHmm).log" }
-Start-Process $python -ArgumentList '-X','faulthandler','bot.py' -WorkingDirectory $dir -WindowStyle Hidden -RedirectStandardError "$dir\bot_err.log" -RedirectStandardOutput "$dir\bot_out.log"
+Start-Process $python -ArgumentList '-X','faulthandler',"`"$script`"" -WorkingDirectory $dir -WindowStyle Hidden -RedirectStandardError "$dir\bot_err.log" -RedirectStandardOutput "$dir\bot_out.log"
