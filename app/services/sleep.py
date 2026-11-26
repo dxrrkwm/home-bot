@@ -1,4 +1,4 @@
-# sleep from the xiaomi smart band through the mi fitness cloud (the same api the app uses)
+# the xiaomi smart band through the mi fitness cloud (the same api the app uses): sleep, steps, heart rate
 # protocol from github.com/LilZeeCN/mi-health-exporter, login from .env (XIAOMI_USER / XIAOMI_PASSWORD)
 #   python -m app.services.sleep login    log in once, keeps only the session in xiaomi_session.json
 #   python -m app.services.sleep code N   the code xiaomi sent when it asks to confirm a new device
@@ -335,13 +335,39 @@ def _day(item: dict) -> dict | None:
     }
 
 
+def _activity(days: int) -> tuple[dict, dict | None]:
+    # steps, distance, calories and heart rate by day; the last measured pulse
+    now = int(time.time())
+    out, latest = {}, None
+    for item in _daily("steps", now - days * 86400, now + 86400):
+        v = json.loads(item["value"])
+        day = time.strftime("%Y-%m-%d", time.gmtime(item["time"]))
+        out[day] = {
+            "steps": v.get("steps", 0),
+            "km": round(v.get("distance", 0) / 1000, 1),
+            "kcal": v.get("calories", 0),
+        }
+    for item in _daily("heart_rate", now - days * 86400, now + 86400):
+        v = json.loads(item["value"])
+        day = time.strftime("%Y-%m-%d", time.gmtime(item["time"]))
+        out.setdefault(day, {"steps": 0, "km": 0, "kcal": 0}).update(rhr=v.get("avg_rhr"), hr=v.get("avg_hr"))
+        last = v.get("latest_hr") or {}
+        # "time" is shifted by the zone, "dbTime" is the real utc one
+        ts = last.get("dbTime") or last.get("time")
+        if ts and (not latest or ts > latest["time"]):
+            latest = {"bpm": last["bpm"], "time": ts}
+    return out, latest
+
+
 def sync(days: int = 7) -> dict:
     now = int(time.time())
     fresh = {d["day"]: d for d in filter(None, map(_day, _daily("sleep", now - days * 86400, now + 86400)))}
     old = cached() or {"days": []}
     merged = {d["day"]: d for d in old["days"]} | fresh
     keep = sorted(merged.values(), key=lambda d: d["day"])[-KEEP_DAYS * 2 :]
-    data = {"ts": time.time(), "days": keep}
+    activity, latest = _activity(days if old.get("activity") else KEEP_DAYS)
+    activity = dict(sorted((old.get("activity", {}) | activity).items())[-KEEP_DAYS * 2 :])
+    data = {"ts": time.time(), "days": keep, "activity": activity, "pulse": latest or old.get("pulse")}
     CACHE.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return data
 

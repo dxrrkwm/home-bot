@@ -24,7 +24,16 @@ FILES = [
     "shifts.json",
 ]
 # settings that change from the chat
-CONFIG_KEYS = ["chat_id", "station_ups", "station_auto_eco", "outage_group", "daily_budget", "panel_version", "pay"]
+CONFIG_KEYS = [
+    "chat_id",
+    "station_ups",
+    "station_auto_eco",
+    "outage_group",
+    "daily_budget",
+    "panel_version",
+    "pay",
+    "steps_goal",
+]
 PUSH_SEC = 60
 
 _last = {"sig": None, "at": 0.0}

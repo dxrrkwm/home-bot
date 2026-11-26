@@ -27,7 +27,11 @@ NIGHT_TIP_BEFORE_H = 6
 NAP = ("16:00", "19:00")
 SUNRISE_STEPS = [(1, 0), (10, 40), (30, 40), (60, 40), (80, 40)]  # (brightness, seconds before it)
 WARM_K = 2700
-AUTO_WAKE_AFTER_SEC = 30 * 60  # the band shows a finished sleep this long ago: the mode ends by itself
+AUTO_WAKE_AFTER_SEC = 30 * 60
+STEPS_GOAL = 8000  # config.json "steps_goal" overrides
+FRESH_SEC = (
+    10 * 60
+)  # the panel asks the cloud again when the data is older  # the band shows a finished sleep this long ago: the mode ends by itself
 
 # called when the state changes (the panel keeps its card fresh this way)
 on_changed = []
@@ -300,6 +304,52 @@ def _pieces(start: dt.datetime, end: dt.datetime) -> list:
     return out
 
 
+def _streak(days: list, goal: int) -> int:
+    # days in a row at the goal, today counts only once reached
+    n = 0
+    for i, (day, steps) in enumerate(reversed(days)):
+        if steps >= goal:
+            n += 1
+        elif i:  # today is not over yet
+            break
+    return n
+
+
+def activity(now: dt.datetime | None = None) -> dict | None:
+    data = sleep.cached() or {}
+    act = data.get("activity") or {}
+    if not act:
+        return None
+    now = now or dt.datetime.now()
+    goal = config.load().get("steps_goal", STEPS_GOAL)
+    today = act.get(now.date().isoformat(), {})
+    days = [((now.date() - dt.timedelta(days=i)).isoformat()) for i in range(13, -1, -1)]
+    steps = [(d, act.get(d, {}).get("steps", 0)) for d in days]
+    worn = [s for _, s in steps[-8:-1] if s]  # the last full days with the band on
+    best = max(steps, key=lambda x: x[1])
+    pulse = data.get("pulse")
+    # the inner ring: the last main sleep if it ended in the last 18 h
+    last = (band_sleep.panel_data() or {}).get("last") or {}
+    sleeps = [g for d in data.get("days", []) for g in d["segments"] if g["dur"] >= band_sleep.MIN_SLEEP]
+    recent = max(sleeps, key=lambda g: g["end"], default=None)
+    slept = recent["dur"] if recent and time.time() - recent["end"] < 18 * 3600 else None
+    return {
+        "steps": today.get("steps", 0),
+        "km": today.get("km", 0),
+        "kcal": today.get("kcal", 0),
+        "rhr": today.get("rhr"),
+        "goal": goal,
+        "days": steps,
+        "avg7": round(sum(worn) / len(worn)) if worn else None,
+        "best": {"day": best[0], "steps": best[1]} if best[1] else None,
+        "streak": _streak(steps, goal),
+        "km7": round(sum(act.get(d, {}).get("km", 0) for d in days[-7:]), 1),
+        "pulse": {"bpm": pulse["bpm"], "ago": int((time.time() - pulse["time"]) // 60)} if pulse else None,
+        "slept": slept,
+        "score": last.get("score") if slept else None,
+    }
+
+
 def _hours(s: dict) -> str:
     return f"{int(s['from'][:2])}–{int(s['to'][:2])}"
 
@@ -335,5 +385,6 @@ def panel_data() -> dict:
         "common": [f"{a}–{b}" for a, b in shifts.common()],
         "work": work,
         "sleep": sleep_data,
+        "activity": activity(now),
         "today": now.date().isoformat(),
     }

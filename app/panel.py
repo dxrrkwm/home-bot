@@ -5,6 +5,7 @@ from app import config, keyboards, relay, router, telegram
 from app.features import band, light, money, prices, reminders, sleep, station
 from app.log import log
 from app.services import mono
+from app.services import sleep as cloud
 
 FIN_STALE_SEC = 15 * 60
 FIN_FORCE_SEC = 60  # monobank gives a statement once a minute
@@ -60,6 +61,13 @@ def publish_band() -> None:
     publish("band", band.panel_data())
 
 
+def _band(force: bool = False) -> None:
+    # steps change all day: ask the cloud again if the data is older than a few minutes
+    if force or cloud.age() > band.FRESH_SEC:
+        sleep.refresh(telegram.Ctx(*_chat()))
+    publish_band()
+
+
 def _sleep(force: bool = False) -> None:
     if force or sleep.stale():
         sleep.refresh(telegram.Ctx(*_chat()))
@@ -84,7 +92,7 @@ REQUESTS = {
     "rem-list": lambda arg: publish("reminders", reminders.panel_list()),
     "prices-panel": lambda arg: _prices(arg == "force"),
     "sleep-panel": lambda arg: _sleep(arg == "force"),
-    "band-panel": lambda arg: publish_band(),
+    "band-panel": lambda arg: _band(arg == "force"),
 }
 
 
