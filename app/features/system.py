@@ -45,7 +45,9 @@ def _copies() -> str:
         "Get-CimInstance Win32_Process -Filter \"name like 'python%'\" | "
         "? { $_.CommandLine -match 'bot\\.py|-m app' } | "
         "% { '{0} <- {1} {2:dd.MM HH:mm} {3} | {4}' -f $_.ProcessId, $_.ParentProcessId, $_.CreationDate, "
-        "$_.ExecutablePath, $_.CommandLine }"
+        "$_.ExecutablePath, $_.CommandLine }; "
+        "Get-ScheduledTask | ? { \"$($_.Actions.Execute) $($_.Actions.Arguments)\" -match 'watchdog|bot\\.py' } | "
+        "% { 'task {0}{1}: {2}' -f $_.TaskPath, $_.TaskName, $_.Actions.Arguments }"
     )
     try:
         out = subprocess.run(
