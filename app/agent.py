@@ -13,7 +13,7 @@ from app import config, link, relay, sync
 from app.features import light, money
 from app.log import log
 from app.main import SINGLE_INSTANCE_PORT as BOT_PORT
-from app.paths import HEARTBEAT, ROOT
+from app.paths import HEARTBEAT, ROOT, TAKEOVER_HEARTBEAT
 from app.services import laptop
 from app.telegram import Ctx
 
@@ -21,11 +21,14 @@ SINGLE_INSTANCE_PORT = BOT_PORT + 1  # the bot itself takes main's port when it 
 LOOP_SEC = 5
 STATE_SEC = 20
 TAKEOVER_SEC = 10 * 60
+HUNG_SEC = 6 * 60  # the bot here stopped writing its heartbeat: stuck, restart it
+RESUME_SEC = 15  # retained hub beat and takeover flag come right after connecting
 SELF_ECO_SEC = 2 * 60
 NO_WINDOW = 0x08000000
 LAMP_METHODS = {"state", "power", "toggle", "bright", "ct", "rgb"}
 
 _hub = {"ts": 0.0}
+_was_covering = {"on": False}  # retained flag: the laptop ran the bot before this agent started
 _self_eco = {"since": None, "done": False}
 
 
@@ -115,6 +118,7 @@ class Takeover:
 
     def _spawn(self) -> None:
         self.retry_at = time.time() + 60
+        TAKEOVER_HEARTBEAT.write_text(str(int(time.time())))
         env = {**os.environ, "HOME_BOT_ROLE": "standalone", "HOME_BOT_TAKEOVER": "1"}
         out = open(ROOT / "takeover_out.log", "a")
         # stdin is a pipe: the bot exits when this process is gone, so it never stays alone
@@ -128,12 +132,13 @@ class Takeover:
             creationflags=NO_WINDOW,
         )
 
-    def start(self) -> None:
-        log("агент: хаба не чути 10 хв, запускаю бота тут")
+    def start(self, resume: bool = False) -> None:
+        log("агент: продовжую підміну хаба" if resume else "агент: хаба не чути 10 хв, запускаю бота тут")
         self.active = True
         self._flag(True)
         self._spawn()
-        self._say("⚠️ ПК з ботом не на зв'язку 10 хв — бот тимчасово працює з ноута.")
+        if not resume:
+            self._say("⚠️ ПК з ботом не на зв'язку 10 хв — бот тимчасово працює з ноута.")
 
     def stop(self) -> None:
         log("агент: хаб повернувся, зупиняю бота тут")
@@ -149,10 +154,19 @@ class Takeover:
     def check(self) -> None:
         if self.active and _hub_alive():
             self.stop()
-        elif not self.active and not _hub_alive() and time.time() - self.started > TAKEOVER_SEC and relay.connected():
-            self.start()
+        elif not self.active and not _hub_alive() and relay.connected():
+            # after a restart of the agent (watchdog, reboot) go on covering at once, no 10 min gap
+            if _was_covering["on"] and time.time() - self.started > RESUME_SEC:
+                self.start(resume=True)
+            elif time.time() - self.started > TAKEOVER_SEC:
+                self.start()
         elif self.active and self.proc.poll() is not None and time.time() > self.retry_at:
             log(f"агент: бот на ноуті зупинився ({self.proc.returncode}), перезапуск")
+            self._spawn()
+        elif self.active and time.time() - TAKEOVER_HEARTBEAT.stat().st_mtime > HUNG_SEC:
+            log("агент: бот на ноуті завис, перезапуск")
+            self.proc.kill()
+            self.proc.wait(30)
             self._spawn()
 
 
@@ -172,6 +186,7 @@ def main() -> None:
     relay.connect(will=(link.STATE, {"ts": 0}))
     relay.on(link.CALL, _on_call)
     relay.on(link.HUB, lambda msg: msg.get("ts") and _hub.update(ts=msg["ts"]))  # ts 0 is the will
+    relay.on(link.TAKEOVER, lambda msg: _was_covering.update(on=bool(msg.get("on"))))
     sync.start()
     takeover = Takeover()
     published = 0.0

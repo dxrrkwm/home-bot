@@ -14,7 +14,16 @@ NO_WINDOW = 0x08000000
 
 
 def _git(*args: str) -> str:
-    out = subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, creationflags=NO_WINDOW)
+    # stdin: the agent gives the bot an open pipe, a child that inherits it may wait on it forever
+    out = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        creationflags=NO_WINDOW,
+        timeout=60,
+    )
     return (out.stdout + out.stderr).strip()
 
 
@@ -37,6 +46,7 @@ def update(ctx: Ctx) -> None:
         return
     deps = subprocess.run(
         [sys.executable, "-m", "pip", "install", "-q", "-r", str(ROOT / "requirements.txt")],
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         creationflags=NO_WINDOW,

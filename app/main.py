@@ -6,7 +6,7 @@ import time
 
 from app import config, link, panel, relay, role, router, sync
 from app.log import log
-from app.paths import HEARTBEAT
+from app.paths import HEARTBEAT, TAKEOVER_HEARTBEAT
 from app.telegram import Ctx, api, flush
 
 SINGLE_INSTANCE_PORT = int(os.environ.get("HOME_BOT_PORT", 47321))
@@ -82,9 +82,11 @@ def main() -> None:
     router.start_background()
     panel.start()
 
+    # watchdog restarts the bot if this gets old, the agent does it for the bot it started
+    heartbeat = TAKEOVER_HEARTBEAT if os.environ.get("HOME_BOT_TAKEOVER") else HEARTBEAT
     offset = 0
     while True:
-        HEARTBEAT.write_text(str(int(time.time())))  # watchdog restarts the bot if this gets old
+        heartbeat.write_text(str(int(time.time())))
         try:
             offset = _poll(offset)
         except Exception as e:  # no internet and so on: wait and retry

@@ -61,7 +61,12 @@ def refresh_hz() -> int:
 
 def active_plan() -> tuple[str, str]:
     out = subprocess.run(
-        ["powercfg", "/getactivescheme"], capture_output=True, text=True, creationflags=NO_WINDOW
+        ["powercfg", "/getactivescheme"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        creationflags=NO_WINDOW,
+        timeout=20,
     ).stdout
     m = re.search(r"GUID:\s*([0-9a-f-]+)\s*\((.*)\)", out)
     return (m.group(1), m.group(2)) if m else ("", "?")
@@ -85,6 +90,7 @@ def run_mode(mode: str) -> None:
             "-Mode",
             mode,
         ],
+        stdin=subprocess.DEVNULL,  # the bot's own stdin can be the agent's pipe
         creationflags=NO_WINDOW,
         timeout=150,
     )
