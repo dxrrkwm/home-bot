@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from app.keyboards import DEFAULT
 from app.log import log
+from app.services import sleepmode
 
 # per thread: when set, answers go there instead of the chat (used by the panel)
 _local = threading.local()
@@ -68,6 +69,8 @@ class Ctx:
             return target(text, inline or [])
         markup = {"inline_keyboard": inline} if inline else (menu or DEFAULT)
         extra = {}
+        if sleepmode.active():  # asleep: the message comes, the band does not buzz
+            extra["disable_notification"] = True
         if preview:
             extra["link_preview_options"] = {"url": preview, "prefer_large_media": True, "show_above_text": True}
         flush(self.token)

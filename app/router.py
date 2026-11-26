@@ -3,7 +3,21 @@ import threading
 
 from app import config
 from app import keyboards as kb
-from app.features import laptop, light, menu, money, outage, pills, power, prices, reminders, sleep, station, system
+from app.features import (
+    band,
+    laptop,
+    light,
+    menu,
+    money,
+    outage,
+    pills,
+    power,
+    prices,
+    reminders,
+    sleep,
+    station,
+    system,
+)
 from app.log import log
 from app.telegram import Ctx, api
 
@@ -11,9 +25,9 @@ from app.telegram import Ctx, api
 lock = threading.Lock()
 
 # order matters: the first feature that understands the text answers, menu catches the rest
-FEATURES = [system, pills, station, outage, reminders, light, laptop, money, prices, sleep, menu]
+FEATURES = [system, pills, station, outage, reminders, light, laptop, money, prices, sleep, band, menu]
 # features with background work: start() once, tick(ctx) on every loop
-BACKGROUND = [station, outage, power, reminders, pills, money, prices, sleep]
+BACKGROUND = [station, outage, power, reminders, pills, money, prices, sleep, band]
 
 # short words, e.g. quick replies from the smart band
 ALIASES = {
@@ -54,6 +68,19 @@ ALIASES = {
     "оновити ціни": prices.FORCE,
     "обновить цены": prices.FORCE,
     "сон": sleep.SHOW,
+    "сплю": band.SLEEP,
+    "спати": band.SLEEP,
+    "спать": band.SLEEP,
+    "лягаю": band.SLEEP,
+    "ложусь": band.SLEEP,
+    "добраніч": band.SLEEP,
+    "спокойной ночи": band.SLEEP,
+    "встав": band.WAKE,
+    "встал": band.WAKE,
+    "прокинувся": band.WAKE,
+    "проснулся": band.WAKE,
+    "доброго ранку": band.WAKE,
+    "доброе утро": band.WAKE,
     "оновити сон": sleep.FORCE,
     "обновить сон": sleep.FORCE,
     "назад": kb.BACK,

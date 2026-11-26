@@ -2,6 +2,7 @@ import re
 
 from app import keyboards as kb
 from app.services import pills as meds
+from app.services import sleepmode
 from app.telegram import Ctx
 
 PILL_RE = re.compile(r"^\s*(таблетк|ліки|лекарств|пігулк)", re.I)
@@ -47,6 +48,8 @@ def handle(ctx: Ctx, text: str) -> bool:
 
 
 def tick(ctx: Ctx) -> None:
+    if sleepmode.active():  # held until "встав"
+        return
     for key, name, t, again in meds.due():
         ctx.send(
             f"💊 Час випити: {name} ({t})" + (" — нагадую ще раз" if again else ""),

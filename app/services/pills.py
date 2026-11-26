@@ -86,7 +86,7 @@ def list_text():
     return "💊 Таблетки:\n" + "\n".join(lines) + "\n\nДодати ще: «таблетка Назва 09:00». Видалити — кнопкою нижче."
 
 
-def _is_day(m, day):
+def is_day(m, day):
     start = dt.date.fromisoformat(m.get("start", day.isoformat()))
     return day >= start and (day - start).days % m.get("every", 1) == 0
 
@@ -102,7 +102,7 @@ def due(now=None):
     out = []
     for m in meds():
         for day in (now.date() - dt.timedelta(days=1), now.date()):
-            if not _is_day(m, day):
+            if not is_day(m, day):
                 continue
             for t in m["times"]:
                 h, mi = map(int, t.split(":"))

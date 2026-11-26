@@ -20,6 +20,8 @@ FILES = [
     "station_state.json",
     "light_state.json",
     "sleep_state.json",
+    "band_state.json",
+    "shifts.json",
 ]
 # settings that change from the chat
 CONFIG_KEYS = ["chat_id", "station_ups", "station_auto_eco", "outage_group", "daily_budget", "panel_version"]

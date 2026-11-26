@@ -2,7 +2,7 @@
 import threading
 
 from app import config, keyboards, relay, router, telegram
-from app.features import light, money, prices, reminders, sleep, station
+from app.features import band, light, money, prices, reminders, sleep, station
 from app.log import log
 from app.services import mono
 
@@ -51,6 +51,11 @@ def publish_sleep() -> None:
     data = sleep.panel_data()
     if data:
         publish("sleep", data)
+    publish_band()
+
+
+def publish_band() -> None:
+    publish("band", band.panel_data())
 
 
 def _sleep(force: bool = False) -> None:
@@ -77,6 +82,7 @@ REQUESTS = {
     "rem-list": lambda arg: publish("reminders", reminders.panel_list()),
     "prices-panel": lambda arg: _prices(arg == "force"),
     "sleep-panel": lambda arg: _sleep(arg == "force"),
+    "band-panel": lambda arg: publish_band(),
 }
 
 
@@ -111,4 +117,5 @@ def start() -> None:
     money.on_synced.append(publish_finance)
     prices.on_checked.append(publish_prices)
     sleep.on_synced.append(publish_sleep)
+    band.on_changed.append(publish_band)
     relay.start(_command)

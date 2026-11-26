@@ -5,7 +5,7 @@ import time
 
 from app import keyboards as kb
 from app.paths import REMINDERS
-from app.services import planner
+from app.services import planner, sleepmode
 from app.telegram import Ctx
 
 REMIND_RE = re.compile(r"^(?:нагадай|напомни|remind)\s+(.*)$", re.I | re.S)
@@ -193,6 +193,8 @@ def handle(ctx: Ctx, text: str) -> bool:
 
 
 def tick(ctx: Ctx) -> None:
+    if sleepmode.active():  # held until "встав"
+        return
     now = time.time()
     with _lock:
         items = load()
