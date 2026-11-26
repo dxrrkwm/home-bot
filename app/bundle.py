@@ -1,5 +1,6 @@
 # moves the bot's settings and state to the hub without putting secrets in a chat:
 #   python -m app.bundle pack            on the laptop: hub.bundle (encrypted) + a passphrase on the screen
+#   python -m app.bundle pack --only .env xiaomi_session.json   just some files for a hub that already runs
 #   python -m app.bundle unpack FILE     on the hub: asks for the passphrase, writes config.json, .env and state
 # send the file any way you like, the passphrase another way (a call)
 import getpass
@@ -26,15 +27,17 @@ def _key(passphrase: str, salt: bytes) -> bytes:
     return hashlib.scrypt(passphrase.encode(), salt=salt, n=2**15, r=8, p=1, maxmem=64 * 2**20, dklen=32)
 
 
-def pack(out: Path) -> None:
+def pack(out: Path, only: list | None = None) -> None:
+    # only: just these files for a hub that already runs (its state and power log stay)
     cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
     for k in LAPTOP_ONLY:
         cfg.pop(k, None)
     cfg["role"] = "hub"
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr("config.json", json.dumps(cfg, ensure_ascii=False, indent=2))
-        for name in sync.FILES + EXTRA:
+        if not only:
+            z.writestr("config.json", json.dumps(cfg, ensure_ascii=False, indent=2))
+        for name in only or sync.FILES + EXTRA:
             if (ROOT / name).exists():
                 z.write(ROOT / name, name)
     passphrase = "-".join(secrets.token_hex(3) for _ in range(4))
@@ -63,9 +66,12 @@ def unpack(src: Path) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 2 and sys.argv[1] == "pack":
-        pack(Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "hub.bundle")
-    elif len(sys.argv) == 3 and sys.argv[1] == "unpack":
-        unpack(Path(sys.argv[2]))
+    args = sys.argv[1:]
+    if args[:1] == ["pack"]:
+        only = args[args.index("--only") + 1 :] if "--only" in args else None
+        rest = args[1 : args.index("--only")] if only else args[1:]
+        pack(Path(rest[0]) if rest else ROOT / "hub.bundle", only)
+    elif len(args) == 2 and args[0] == "unpack":
+        unpack(Path(args[1]))
     else:
-        sys.exit("python -m app.bundle pack [FILE] | unpack FILE")
+        sys.exit("python -m app.bundle pack [FILE] [--only NAME ...] | unpack FILE")
