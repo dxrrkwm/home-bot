@@ -96,7 +96,18 @@ def run_mode(mode: str) -> None:
     )
 
 
+class LASTINPUTINFO(ctypes.Structure):
+    _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
+
+
+def idle_sec() -> int:
+    # since the last key or mouse input in this session
+    info = LASTINPUTINFO(ctypes.sizeof(LASTINPUTINFO), 0)
+    ctypes.windll.user32.GetLastInputInfo(ctypes.byref(info))
+    return (ctypes.windll.kernel32.GetTickCount() - info.dwTime) // 1000
+
+
 def snapshot() -> dict:
     ac, pct = power()
     guid, plan = active_plan()
-    return {"ac": ac, "pct": pct, "eco": guid == SAVER_GUID, "plan": plan, "hz": refresh_hz()}
+    return {"ac": ac, "pct": pct, "eco": guid == SAVER_GUID, "plan": plan, "hz": refresh_hz(), "idle": idle_sec()}

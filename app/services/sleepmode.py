@@ -1,4 +1,5 @@
-# "сплю" / "встав": while asleep the bot sends everything silently and holds reminders and pills
+# "сплю" / "встав": while asleep the bot sends everything silently and holds reminders and pills;
+# the automatic mode (laptop idle at night) only makes messages silent
 import json
 import time
 
@@ -28,10 +29,19 @@ def active() -> bool:
     return since() is not None
 
 
-def begin(eco_by_us: bool) -> None:
+def begin(eco_by_us: bool, auto: bool = False, since: float | None = None) -> None:
     s = _load()
-    s.update(since=time.time(), eco=eco_by_us)
+    s.update(since=since or time.time(), eco=eco_by_us, auto=auto)
     _save(s)
+
+
+def is_auto() -> bool:
+    return active() and bool(_load().get("auto"))
+
+
+def held() -> bool:
+    # reminders and pills wait only when the user said "сплю"
+    return active() and not _load().get("auto")
 
 
 def end() -> dict | None:
@@ -39,8 +49,13 @@ def end() -> dict | None:
     s = _load()
     if not s.get("since"):
         return None
-    session = {"from": s["since"], "to": min(time.time(), s["since"] + MAX_SEC), "eco": s.get("eco", False)}
-    s.update(since=None, eco=False, last=session)
+    session = {
+        "from": s["since"],
+        "to": min(time.time(), s["since"] + MAX_SEC),
+        "eco": s.get("eco", False),
+        "auto": s.get("auto", False),
+    }
+    s.update(since=None, eco=False, auto=False, last=session)
     _save(s)
     return session
 

@@ -69,8 +69,7 @@ Panel: `sleep-panel`, `sleep-panel:force` (last sleep, 14 days of hours, when th
 
 ## Band: sleep mode and shifts
 
-`features/band.py`, `services/sleepmode.py`, `services/shifts.py`. `сплю` (also a quick reply on the band to any
-bot message): lamp off, laptop to eco, every message silent, reminders and pills wait. `встав`: warm light from 1%
+`features/band.py`, `services/sleepmode.py`, `services/shifts.py`. `сплю` (chat or panel): lamp off, laptop to eco, every message silent, reminders and pills wait. `встав`: warm light from 1%
 up, normal mode back, a short brief (how long you slept, the shift, pills, reminders, outages today). The mode ends
 by itself when the band shows the sleep finished or after 14 h. Shifts (12 h, day 09–21, night 21–09) are set in
 the panel calendar (`shift:YYYY-MM-DD` cycles day, night, none; `shifts.json`, not in git); the bot tells when to go

@@ -214,7 +214,7 @@ def handle(ctx: Ctx, text: str) -> bool:
 
 
 def tick(ctx: Ctx) -> None:
-    if sleepmode.active():  # held until "встав"
+    if sleepmode.held():  # held until "встав"
         return
     now = time.time()
     with _lock:

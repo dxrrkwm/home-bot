@@ -29,7 +29,7 @@ FEATURES = [system, pills, station, outage, reminders, light, laptop, money, pri
 # features with background work: start() once, tick(ctx) on every loop
 BACKGROUND = [station, outage, power, reminders, pills, money, prices, sleep, band]
 
-# short words, e.g. quick replies from the smart band
+# short words people type, or words in other languages
 ALIASES = {
     "світло": "toggle_light",
     "свет": "toggle_light",

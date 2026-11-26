@@ -1,5 +1,5 @@
-# the band as a remote: "сплю" and "встав" as quick replies to any bot message on the band,
-# plus bedtime tips for the 2/2 shifts and a short morning brief
+# sleep mode ("сплю" in the chat or the panel, or by itself when the laptop is idle at night),
+# bedtime tips for the shifts, a short morning brief, steps and pulse from the band
 import datetime as dt
 import re
 import threading
@@ -28,6 +28,11 @@ NAP = ("16:00", "19:00")
 SUNRISE_STEPS = [(1, 0), (10, 40), (30, 40), (60, 40), (80, 40)]  # (brightness, seconds before it)
 WARM_K = 2700
 AUTO_WAKE_AFTER_SEC = 30 * 60
+AUTO_IDLE_SEC = 40 * 60  # the laptop untouched this long at night: probably asleep, messages go silent
+AUTO_BACK_SEC = 2 * 60  # input again: awake
+AUTO_NIGHT = (23, 7)  # hours when idle means sleep, plus a few hours after a night shift
+AUTO_AFTER_NIGHT = dt.timedelta(hours=4)
+AUTO_BRIEF_SEC = 3 * 3600  # an automatic sleep this long gets the morning brief when it ends
 STEPS_GOAL = 8000  # config.json "steps_goal" overrides
 FRESH_SEC = (
     10 * 60
@@ -128,7 +133,7 @@ def _mode(mode: str) -> None:
 
 
 def go_to_sleep(ctx: Ctx) -> None:
-    if sleepmode.active():
+    if sleepmode.held():  # an automatic quiet mode becomes the full one
         ctx.send("🌙 Вже сплю. Прокинешся — «встав».")
         return
     ac = devices.power()[0]
@@ -273,7 +278,34 @@ def handle(ctx: Ctx, text: str) -> bool:
     return True
 
 
+def _sleepy_hours(now: dt.datetime) -> bool:
+    if shifts.current(now):
+        return False
+    prev = shifts.previous(now)
+    after_night = prev and prev[2] == "night" and now - prev[1] < AUTO_AFTER_NIGHT
+    return now.hour >= AUTO_NIGHT[0] or now.hour < AUTO_NIGHT[1] or bool(after_night)
+
+
+def _auto(ctx: Ctx) -> None:
+    # the laptop tells when nobody uses it: silent messages at night, sound back on the first touch
+    idle = devices.idle_sec()
+    if idle is None:
+        return
+    since = sleepmode.since()
+    if since and sleepmode.is_auto() and idle < AUTO_BACK_SEC:
+        if time.time() - since >= AUTO_BRIEF_SEC:
+            wake_up(ctx, lamp=False)
+        else:
+            sleepmode.end()
+            _changed()
+    elif not since and idle >= AUTO_IDLE_SEC and _sleepy_hours(dt.datetime.now()):
+        sleepmode.begin(eco_by_us=False, auto=True, since=time.time() - idle)
+        log("сон: ноут без руху вночі, повідомлення без звуку")
+        _changed()
+
+
 def tick(ctx: Ctx) -> None:
+    _auto(ctx)
     if sleepmode.overdue():
         sleepmode.end()
         _changed()
@@ -377,6 +409,7 @@ def panel_data() -> dict:
     nxt = shifts.upcoming(now)
     return {
         "sleeping": dt.datetime.fromtimestamp(since).strftime("%H:%M") if since else None,
+        "auto": sleepmode.is_auto(),
         "slept": int((time.time() - since) // 60) if since else None,
         "next": shifts.label(nxt, now) if nxt else None,
         "advice": advice(now),

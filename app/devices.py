@@ -16,6 +16,13 @@ def power() -> tuple[bool | None, int | None]:
     return s.get("ac"), s.get("pct")
 
 
+def idle_sec() -> int | None:
+    # None when the laptop is out of reach
+    if role.HAS_DEVICES:
+        return laptop.idle_sec()
+    return (link.laptop_state() or {}).get("idle")
+
+
 def is_eco() -> bool:
     return laptop.is_eco() if role.HAS_DEVICES else bool((link.laptop_state() or {}).get("eco"))
 
