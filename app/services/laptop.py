@@ -1,4 +1,4 @@
-# the laptop itself: mains or battery, windows power plan, eco and normal modes (eco.ps1 next to the bot)
+# the laptop itself: mains or battery, windows power plan, normal / eco / min modes (eco.ps1 next to the bot)
 import ctypes
 import re
 import subprocess
@@ -6,6 +6,7 @@ import subprocess
 from app.paths import ECO_PS1
 
 SAVER_GUID = "637dba06-ebd6-4e7a-9933-1fe199f85bbb"
+MIN_GUID = "b0710000-5eed-4e1e-9a1a-000000000001"  # made by eco.ps1 -Mode min
 NO_WINDOW = 0x08000000
 
 
@@ -72,8 +73,14 @@ def active_plan() -> tuple[str, str]:
     return (m.group(1), m.group(2)) if m else ("", "?")
 
 
+def mode() -> str:
+    guid = active_plan()[0]
+    return "min" if guid == MIN_GUID else "eco" if guid == SAVER_GUID else "normal"
+
+
 def is_eco() -> bool:
-    return active_plan()[0] == SAVER_GUID
+    # min saves even more, for the automatic switches it counts as eco
+    return mode() != "normal"
 
 
 def run_mode(mode: str) -> None:
@@ -110,4 +117,5 @@ def idle_sec() -> int:
 def snapshot() -> dict:
     ac, pct = power()
     guid, plan = active_plan()
-    return {"ac": ac, "pct": pct, "eco": guid == SAVER_GUID, "plan": plan, "hz": refresh_hz(), "idle": idle_sec()}
+    m = "min" if guid == MIN_GUID else "eco" if guid == SAVER_GUID else "normal"
+    return {"ac": ac, "pct": pct, "eco": m != "normal", "mode": m, "plan": plan, "hz": refresh_hz(), "idle": idle_sec()}

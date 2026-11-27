@@ -1,6 +1,7 @@
 from app import config
 
 ECO, NORMAL, STATUS = "🔋 Еко", "⚡ Звичайний", "📊 Статус"
+MIN = "🌑 Мінімум"
 PC, BACK = "💻 ПК", "⬅️ Назад"
 LIGHT = "💡 Світло"
 MONEY, SYNC = "💰 Гроші", "🔄 Оновити виписку"
@@ -38,6 +39,7 @@ DEFAULT = MAIN
 BUTTONS = {
     ECO,
     NORMAL,
+    MIN,
     STATUS,
     PC,
     BACK,

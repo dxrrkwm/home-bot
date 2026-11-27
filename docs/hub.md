@@ -5,7 +5,7 @@ The bot can run on a PC that is always on (hub), while the laptop keeps only wha
 | Where | What |
 |---|---|
 | hub | telegram, reminders, pills, monthly planner, prices, mono statement, power station (cloud), DTEK schedule, panel over mqtt, power log |
-| laptop (agent) | eco / normal modes (eco.ps1, OMEN BIOS), battery and mains, Xiaomi lamp in the LAN, hotkeys (`lamp.vbs`, `eco.vbs`), mono statement copy for `mono_dir` |
+| laptop (agent) | normal / eco / min modes (eco.ps1, OMEN BIOS), battery and mains, Xiaomi lamp in the LAN, hotkeys (`lamp.vbs`, `eco.vbs`), mono statement copy for `mono_dir` |
 
 They talk over the same mqtt broker and key as the panel (`app/link.py`), no open ports:
 

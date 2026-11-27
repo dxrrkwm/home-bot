@@ -125,7 +125,7 @@ def panel_data(cfg: dict, force: bool = False) -> dict:
         "ups": monitor.ups,
         "grid": grid,
         "since": since,
-        "laptop": {"ac": ac, "pct": lpct, "eco": devices.is_eco()},
+        "laptop": {"ac": ac, "pct": lpct, "eco": devices.is_eco(), "mode": devices.mode()},
         "days": days,
         "count": len(stats["outages"]),
         "hours": round(sum(b - a for a, b in stats["outages"]) / 3600, 1),
@@ -157,6 +157,8 @@ def _grid_back(ctx: Ctx, s: dict) -> None:
         if sleepmode.active():
             sleepmode.hold_eco()
             msg += "\n🌙 Ти спиш — Еко лишаю, звичайний поверну, як прокинешся."
+        elif devices.mode() == "min":
+            msg += "\n🌑 Ноут лишаю в «Мінімумі»."
         elif devices.switch("normal"):
             msg += "\n⚡ Повернув звичайний режим."
             inline = [[{"text": "🔋 Лишити еко", "callback_data": "eco"}]]

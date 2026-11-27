@@ -27,7 +27,7 @@ lock = threading.Lock()
 # order matters: the first feature that understands the text answers, menu catches the rest
 FEATURES = [system, pills, station, outage, reminders, light, laptop, money, prices, sleep, band, menu]
 # features with background work: start() once, tick(ctx) on every loop
-BACKGROUND = [station, outage, power, reminders, pills, money, prices, sleep, band, system]
+BACKGROUND = [station, outage, power, reminders, pills, money, prices, sleep, band, system, laptop]
 
 # short words people type, or words in other languages
 ALIASES = {
@@ -40,6 +40,10 @@ ALIASES = {
     "эко": kb.ECO,
     "звичайний": kb.NORMAL,
     "обычный": kb.NORMAL,
+    "мінімум": kb.MIN,
+    "минимум": kb.MIN,
+    "йду": kb.MIN,
+    "ухожу": kb.MIN,
     "статус": kb.STATUS,
     "нагадування": kb.REM_LIST,
     "напоминания": kb.REM_LIST,

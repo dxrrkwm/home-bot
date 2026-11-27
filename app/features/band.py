@@ -137,11 +137,11 @@ def go_to_sleep(ctx: Ctx) -> None:
         ctx.send("🌙 Вже сплю. Прокинешся — «встав».")
         return
     ac = devices.power()[0]
-    eco = ac is not None and not devices.is_eco()
-    sleepmode.begin(eco_by_us=eco)
-    ctx.send("🌙 Добраніч. Лампу вимикаю" + (", ноут в Еко" if eco else "") + ". До «встав» усе тихо.")
+    low = ac is not None and devices.mode() != "min"
+    sleepmode.begin(eco_by_us=low)
+    ctx.send("🌙 Добраніч. Лампу вимикаю" + (", ноут у «Мінімум»" if low else "") + ". До «встав» усе тихо.")
     # slow parts in the background: the chat and the panel stay responsive
-    threading.Thread(target=lambda: (_lamp_off(), eco and _mode("eco"), _changed()), daemon=True).start()
+    threading.Thread(target=lambda: (_lamp_off(), low and _mode("min"), _changed()), daemon=True).start()
 
 
 def _short(text: str, size: int = 40) -> str:
@@ -187,13 +187,13 @@ def wake_up(ctx: Ctx, lamp: bool = True) -> None:
         return
     ctx.send(_brief(session))
     ac = devices.power()[0]
-    back = session["eco"] and ac
+    back = session["eco"] and ac is not None
 
     def run():
         if lamp:
             _sunrise()
         if back:
-            _mode("normal")
+            _mode("normal" if ac else "eco")
         _changed()
 
     threading.Thread(target=run, daemon=True).start()
@@ -287,10 +287,11 @@ def _sleepy_hours(now: dt.datetime) -> bool:
 
 
 def _finish() -> None:
-    # the sleep ends without the brief; the normal mode comes back if the sleep held eco
+    # the sleep ends without the brief; the mode from before the sleep comes back (eco without mains)
     session = sleepmode.end()
-    if session and session["eco"] and devices.power()[0]:
-        devices.switch("normal")
+    ac = devices.power()[0]
+    if session and session["eco"] and ac is not None:
+        devices.switch("normal" if ac else "eco")
     _changed()
 
 

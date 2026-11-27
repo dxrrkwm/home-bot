@@ -67,9 +67,16 @@ it refreshes itself for months. Mi Fitness uploads about once an hour (its own a
 comes as a short message (shift work: a "night" can be in the day). Chat: `сон`, `оновити сон`.
 Panel: `sleep-panel`, `sleep-panel:force` (last sleep, 14 days of hours, when the sleep was).
 
+## Laptop modes
+
+`eco.ps1` next to the bot folder: `normal`, `eco` (Power saver, no turbo, 60 Hz) and `min` for an empty room
+(`🌑 Мінімум`, `йду`): own plan "Bot minimum" with CPU up to 40%, the screen off, closing the lid does nothing,
+no sleep, apps from `min_close.txt` closed. Only the bot keeps running. The first touch after 5 min idle brings
+the normal mode back (eco without mains). Power events treat `min` as eco and do not switch it back to normal.
+
 ## Band: sleep mode and shifts
 
-`features/band.py`, `services/sleepmode.py`, `services/shifts.py`. `сплю` (chat or panel): lamp off, laptop to eco, every message silent, reminders and pills wait. `встав`: warm light from 1%
+`features/band.py`, `services/sleepmode.py`, `services/shifts.py`. `сплю` (chat or panel): lamp off, laptop to min, every message silent, reminders and pills wait. `встав`: warm light from 1%
 up, normal mode back, a short brief (how long you slept, the shift, pills, reminders, outages today). The mode ends
 by itself when the band shows the sleep finished or after 14 h. Shifts (12 h, day 09–21, night 21–09) are set in
 the panel calendar (`shift:YYYY-MM-DD` cycles day, night, none; `shifts.json`, not in git); the bot tells when to go

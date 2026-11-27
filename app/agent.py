@@ -77,7 +77,7 @@ def _self_eco_check() -> None:
     ac, _ = laptop.power()
     hub_reachable = relay.connected() and time.time() - _hub["ts"] < 3 * link.HUB_BEAT_SEC
     if ac or hub_reachable:
-        if ac and _self_eco["done"] and laptop.is_eco():
+        if ac and _self_eco["done"] and laptop.mode() == "eco":
             laptop.run_mode("normal")
             log("агент: світло є, повернув звичайний")
         _self_eco.update(since=None, done=False)

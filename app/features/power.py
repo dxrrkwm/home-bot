@@ -110,7 +110,7 @@ def on_ac_back(ctx: Ctx) -> None:
         return
     msg = "💡 Ноут знову від розетки — схоже, світло дали."
     inline = None
-    if ctx.cfg.get("station_auto_eco", True) and devices.is_eco() and devices.switch("normal"):
+    if ctx.cfg.get("station_auto_eco", True) and devices.mode() == "eco" and devices.switch("normal"):
         msg += "\n⚡ Повернув звичайний режим."
         inline = [[{"text": "🔋 Лишити еко", "callback_data": "eco"}]]
     if s and s.get("online") and s["pct"] < 90 and station.mode_of(s) != "charging":

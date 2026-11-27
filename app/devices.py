@@ -27,6 +27,14 @@ def is_eco() -> bool:
     return laptop.is_eco() if role.HAS_DEVICES else bool((link.laptop_state() or {}).get("eco"))
 
 
+def mode() -> str:
+    # "normal", "eco" or "min"; an older agent sends only the eco flag
+    if role.HAS_DEVICES:
+        return laptop.mode()
+    s = link.laptop_state() or {}
+    return s.get("mode") or ("eco" if s.get("eco") else "normal")
+
+
 def run_mode(mode: str) -> None:
     powerlog.event(f"mode_{mode}")
     if role.HAS_DEVICES:
