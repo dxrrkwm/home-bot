@@ -219,9 +219,11 @@ def till_payday(a, bills, avg):
             day["bill"] = [due[k]["name"], due[k]["sum"]]
         if d == pay:
             day["when"] = "pay"
+        if today <= d < pay:
+            # free money left at the end of the day if today and every next day go like the last week
+            day["left"] = round(a["free"] - max(a["spent"], avg) - avg * (d - today).days)
         days.append(day)
         d += dt.timedelta(days=1)
-    # what is left on payday if today and every next day go like the last week
     end = a["free"] - max(a["spent"], avg) - avg * (a["days"] - 1)
     return {"days": days, "per_day": a["per_day"], "avg": round(avg), "end": round(end), "payday": a["payday"]}
 
