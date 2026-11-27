@@ -21,6 +21,7 @@ def publish_finance() -> None:
         data["salary"] = money.salary(cfg)
         data["goals"] = mono.saved_goals(money.deadlines(cfg))
         data["allow"] = money.allowance(cfg)
+        data["track"] = money.track(cfg)
         publish("fin", data)
 
 

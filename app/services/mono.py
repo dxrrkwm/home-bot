@@ -96,7 +96,12 @@ def _remember(safe):
     except Exception:
         hist = {}
     debt = sum(max(c["limit"] - c["balance"], 0) for c in safe["cards"] if c["limit"] > 0)
-    hist[dt.date.today().isoformat()] = {"debt": round(debt), "jars": {j["title"]: j["balance"] for j in safe["jars"]}}
+    white = next((c["balance"] for c in safe["cards"] if c.get("type") == "white"), None)
+    day = hist.setdefault(dt.date.today().isoformat(), {})
+    day.update(debt=round(debt), jars={j["title"]: j["balance"] for j in safe["jars"]})
+    if white is not None:
+        day.setdefault("white_first", white)  # the first look of the day, the plan of a period starts here
+        day["white"] = white
     keep = sorted(hist)[-400:]
     HISTORY_PATH.write_text(json.dumps({k: hist[k] for k in keep}, ensure_ascii=False), encoding="utf-8")
 
@@ -179,6 +184,60 @@ def allowance(payday, bills, goals_list):
 
 def _n(n):
     return f"{n:,.0f}".replace(",", " ")
+
+
+def _history():
+    try:
+        return json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def track(payday, bills, goals_list):
+    # the white card from the first look after the last salary to the next one: the plan line
+    # (an even daily share, the bills on their days, the goal money set aside) and what really happened.
+    # money put into the goal jars counts as kept, a salary or a gift on the way shows up as ahead
+    hist = _history()
+    today = dt.date.today()
+    pay = _next_day(payday, today + dt.timedelta(days=1))
+    last_pay = (pay.replace(day=1) - dt.timedelta(days=1)).replace(day=min(payday, 28))
+    days = [k for k in sorted(hist) if k >= last_pay.isoformat() and "white" in hist[k]]
+    if not days:
+        return None
+    start = dt.date.fromisoformat(days[0])
+    span = (pay - start).days
+    first = hist[days[0]].get("white_first", hist[days[0]]["white"])
+    due = [(_next_day(b["day"], start), b["sum"]) for b in bills]
+    due = [(d, s) for d, s in due if d < pay]
+    jars = [g["n"] for g in goals_list if g.get("need")]
+    goal = sum(g["need"] for g in goals_list if g.get("need")) * span / 30
+    rate = (first - sum(s for _, s in due) - goal) / span
+    plan = [[0, round(first)]]
+    for i in range(span):
+        d = start + dt.timedelta(days=i)
+        plan.append([i + 1, round(first - rate * (i + 1) - sum(s for dd, s in due if dd <= d))])
+    rows = list(_read_csv().values())
+    fact = [[0, round(first)]]
+    for k in days:
+        put = -sum(
+            float(r["amount"])
+            for r in rows
+            if days[0] <= r["time"][:10] <= k and any(t.lower() in r["description"].lower() for t in jars)
+        )
+        fact.append([(dt.date.fromisoformat(k) - start).days + 1, round(hist[k]["white"] + put)])
+    now = (today - start).days + 1
+    ahead = fact[-1][1] - plan[min(now, span)][1]
+    return {
+        "from": start.strftime("%d.%m"),
+        "to": pay.strftime("%d.%m"),
+        "span": span,
+        "now": now,
+        "plan": plan,
+        "fact": fact,
+        "ahead": ahead,
+        "bills": [[(d - start).days + 1, s] for d, s in due],
+        "rate": round(rate),
+    }
 
 
 def allowance_text(a):
