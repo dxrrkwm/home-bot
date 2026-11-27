@@ -13,7 +13,7 @@ from app.services import sleepmode
 from app.telegram import Ctx
 
 STATE = ROOT / "presence_state.json"
-AWAY_SEC = 15 * 60  # android drops off the wi-fi for a few minutes now and then
+AWAY_SEC = 10 * 60  # android drops off the wi-fi for a few minutes now and then
 BACK_SEC = 90
 
 _busy = threading.Lock()
