@@ -67,7 +67,8 @@ def _station() -> dict:
     age = time.time() - s["ts"]
     if age > 600:
         return _item("station", "Станція", "warn", f"дані {_ago(age)}")
-    return _item("station", "Станція", "ok", f"{s['pct']}% · {station_api.mode_of(s)} · {s['out_w']} Вт")
+    mode = {"charging": "світло є", "supply": "живить від батареї", "idle": "очікує"}.get(station_api.mode_of(s), "")
+    return _item("station", "Станція", "ok", f"{s['pct']}% · {mode} · віддає {s['out_w']} Вт")
 
 
 def _phone() -> dict:
