@@ -211,20 +211,21 @@ def track(payday, bills, goals_list):
     due = [(d, s) for d, s in due if d < pay]
     jars = [g["n"] for g in goals_list if g.get("need")]
     goal = sum(g["need"] for g in goals_list if g.get("need")) * span / 30
-    rate = (first - sum(s for _, s in due) - goal) / span
-    plan = [[0, round(first)]]
-    for i in range(span):
-        d = start + dt.timedelta(days=i)
-        plan.append([i + 1, round(first - rate * (i + 1) - sum(s for dd, s in due if dd <= d))])
+    # free money: the white card without the bills still to come and the goal money, so a few hundred show
+    free = first - sum(s for _, s in due) - goal
+    rate = free / span
+    plan = [[i, round(free - rate * i)] for i in range(span + 1)]
     rows = list(_read_csv().values())
-    fact = [[0, round(first)]]
+    fact = [[0, round(free)]]
     for k in days:
+        day = dt.date.fromisoformat(k)
         put = -sum(
             float(r["amount"])
             for r in rows
             if days[0] <= r["time"][:10] <= k and any(t.lower() in r["description"].lower() for t in jars)
         )
-        fact.append([(dt.date.fromisoformat(k) - start).days + 1, round(hist[k]["white"] + put)])
+        coming = sum(s for d, s in due if d > day)
+        fact.append([(day - start).days + 1, round(hist[k]["white"] + put - coming - goal)])
     now = (today - start).days + 1
     ahead = fact[-1][1] - plan[min(now, span)][1]
     return {
