@@ -88,18 +88,15 @@ def allowance(cfg: dict) -> dict | None:
     return mono.allowance(cfg.get("pay", {}).get("payday", 7), bills(cfg), goals)
 
 
-def track(cfg: dict) -> dict | None:
-    goals = mono.saved_goals(deadlines(cfg))
-    return mono.track(cfg.get("pay", {}).get("payday", 7), bills(cfg), goals)
+def till_payday(cfg: dict) -> dict | None:
+    a = allowance(cfg)
+    data = mono.panel_data(a["per_day"]) if a else None
+    return mono.till_payday(a, bills(cfg), data["avg7"]) if a and data else None
 
 
-def ahead_text(t: dict | None) -> str:
-    if not t or t["now"] < 2:
-        return ""
-    a = t["ahead"]
-    if abs(a) < 50:
-        return "📈 Іде рівно за планом до зарплати."
-    return f"📈 До зарплати ти {'попереду' if a > 0 else 'позаду'} плану на {uah(abs(a))} грн."
+def forecast_text(cfg: dict) -> str:
+    t = till_payday(cfg)
+    return mono.forecast_text(t) if t else ""
 
 
 def budget(cfg: dict) -> int:
@@ -115,7 +112,7 @@ def summary(cfg: dict) -> str:
     s = mono.summary(a["per_day"] if a else cfg.get("daily_budget", 280), today_line=not a)
     if s and a:  # right after the cards and jars, before the averages
         head, _, tail = s.partition("\n\n")
-        ahead = ahead_text(track(cfg))
+        ahead = forecast_text(cfg)
         s = f"{head}\n\n{mono.allowance_text(a)}" + (f"\n{ahead}" if ahead else "") + f"\n{tail.strip()}"
     if s and (goals := mono.goals_text(mono.saved_goals(deadlines(cfg)))):
         s += "\n\n" + goals

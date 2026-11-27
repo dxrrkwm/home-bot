@@ -21,7 +21,8 @@ def publish_finance() -> None:
         data["salary"] = money.salary(cfg)
         data["goals"] = mono.saved_goals(money.deadlines(cfg))
         data["allow"] = money.allowance(cfg)
-        data["track"] = money.track(cfg)
+        if data["allow"]:
+            data["till"] = mono.till_payday(data["allow"], money.bills(cfg), data["avg7"])
         publish("fin", data)
 
 

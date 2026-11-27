@@ -41,7 +41,7 @@ def _money(cfg: dict) -> str | None:
     diff = budget - week
     line = f"💰 Витрати: {money.uah(week)} грн з {money.uah(budget)}"
     line += f" — зекономив {money.uah(diff)}." if diff >= 0 else f" — понад на {money.uah(-diff)}."
-    if ahead := money.ahead_text(money.track(cfg)):
+    if ahead := money.forecast_text(cfg):
         line += "\n" + ahead
     if goals := mono.goals_text(mono.saved_goals(money.deadlines(cfg))):
         line += "\n" + goals

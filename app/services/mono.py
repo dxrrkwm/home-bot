@@ -193,52 +193,48 @@ def _history():
         return {}
 
 
-def track(payday, bills, goals_list):
-    # the white card from the first look after the last salary to the next one: the plan line
-    # (an even daily share, the bills on their days, the goal money set aside) and what really happened.
-    # money put into the goal jars counts as kept, a salary or a gift on the way shows up as ahead
-    hist = _history()
+def till_payday(a, bills, avg):
+    # a column a day from a week ago to the salary: what went out, what is allowed, the bills on their days,
+    # and where the current pace ends up on payday
     today = dt.date.today()
-    pay = _next_day(payday, today + dt.timedelta(days=1))
-    last_pay = (pay.replace(day=1) - dt.timedelta(days=1)).replace(day=min(payday, 28))
-    days = [k for k in sorted(hist) if k >= last_pay.isoformat() and "white" in hist[k]]
-    if not days:
-        return None
-    start = dt.date.fromisoformat(days[0])
-    span = (pay - start).days
-    first = hist[days[0]].get("white_first", hist[days[0]]["white"])
-    due = [(_next_day(b["day"], start), b["sum"]) for b in bills]
-    due = [(d, s) for d, s in due if d < pay]
-    jars = [g["n"] for g in goals_list if g.get("need")]
-    goal = sum(g["need"] for g in goals_list if g.get("need")) * span / 30
-    # free money: the white card without the bills still to come and the goal money, so a few hundred show
-    free = first - sum(s for _, s in due) - goal
-    rate = free / span
-    plan = [[i, round(free - rate * i)] for i in range(span + 1)]
-    rows = list(_read_csv().values())
-    fact = [[0, round(free)]]
-    for k in days:
-        day = dt.date.fromisoformat(k)
-        put = -sum(
-            float(r["amount"])
-            for r in rows
-            if days[0] <= r["time"][:10] <= k and any(t.lower() in r["description"].lower() for t in jars)
+    pay = today + dt.timedelta(days=a["days"])
+    first = max(today - dt.timedelta(days=6), (pay.replace(day=1) - dt.timedelta(days=1)).replace(day=pay.day))
+    spent = {}
+    for r in _read_csv().values():
+        if _is_daily_spend(r) and r["time"][:10] >= first.isoformat():
+            spent[r["time"][:10]] = spent.get(r["time"][:10], 0) - float(r["amount"])
+    due = {_next_day(b["day"], today).isoformat(): b for b in bills}
+    days = []
+    d = first
+    while d <= pay:
+        k = d.isoformat()
+        day = {
+            "d": d.strftime("%d.%m"),
+            "w": d.weekday(),
+            "when": "past" if d < today else "today" if d == today else "next",
+        }
+        if d <= today:
+            day["spent"] = round(spent.get(k, 0))
+        if k in due and today <= d < pay:
+            day["bill"] = [due[k]["name"], due[k]["sum"]]
+        if d == pay:
+            day["when"] = "pay"
+        days.append(day)
+        d += dt.timedelta(days=1)
+    # what is left on payday if today and every next day go like the last week
+    end = a["free"] - max(a["spent"], avg) - avg * (a["days"] - 1)
+    return {"days": days, "per_day": a["per_day"], "avg": round(avg), "end": round(end), "payday": a["payday"]}
+
+
+def forecast_text(t):
+    if t["end"] >= 0:
+        return (
+            f"📈 Якщо витрачати як цього тижня (≈ {_n(t['avg'])}/день), на {t['payday']} лишиться ≈ {_n(t['end'])} грн."
         )
-        coming = sum(s for d, s in due if d > day)
-        fact.append([(day - start).days + 1, round(hist[k]["white"] + put - coming - goal)])
-    now = (today - start).days + 1
-    ahead = fact[-1][1] - plan[min(now, span)][1]
-    return {
-        "from": start.strftime("%d.%m"),
-        "to": pay.strftime("%d.%m"),
-        "span": span,
-        "now": now,
-        "plan": plan,
-        "fact": fact,
-        "ahead": ahead,
-        "bills": [[(d - start).days + 1, s] for d, s in due],
-        "rate": round(rate),
-    }
+    return (
+        f"📉 Якщо витрачати як цього тижня (≈ {_n(t['avg'])}/день), до {t['payday']} не вистачить ≈ {_n(-t['end'])} грн. "
+        f"Тримай ≈ {_n(t['per_day'])}/день — і зійдеться."
+    )
 
 
 def allowance_text(a):
