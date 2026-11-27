@@ -6,7 +6,7 @@ import time
 
 from app import keyboards as kb
 from app.paths import REMINDERS
-from app.services import planner, sleepmode
+from app.services import mute, planner, sleepmode
 from app.telegram import Ctx
 
 REMIND_RE = re.compile(r"^(?:нагадай|напомни|remind)\s+(.*)$", re.I | re.S)
@@ -18,7 +18,11 @@ REPEAT_RE = re.compile(r"\s*(?:кожні\s+(\d+)\s*(хв|мин|м|год|ча�
 REPEAT_MIN = 10  # until "done" is pressed, like pills
 GIVE_UP_HOURS = 8
 DAY_HOURS = range(10, 23)  # "day_only" reminders wait for these hours
-SNOOZE_MIN = 30
+SNOOZE_MIN = 30  # old buttons without minutes
+SNOOZE = (15, 60, 180)
+# silence for all reminders and pills: label -> argument of "тиша"
+MUTE_PRESETS = (("1 год", "1 год"), ("3 год", "3 год"), ("до ранку", "до ранку"))
+MUTE_RE = re.compile(r"^(?:тиша|тишина|мут|mute)(?:\s+(.*))?$", re.I | re.S)
 
 HELP = (
     "➕ Щоб додати нагадування, просто напиши:\n"
@@ -89,10 +93,12 @@ def every_text(every: int) -> str:
 
 def text_list() -> str:
     items = sorted(load(), key=lambda r: r["ts"])
+    muted = mute_text() + "\n\n" if mute.active() else ""
     if not items:
-        return "⏰ Нагадувань немає.\n\n" + HELP
+        return muted + "⏰ Нагадувань немає.\n\n" + HELP
     return (
-        "⏰ Нагадування:\n"
+        muted
+        + "⏰ Нагадування:\n"
         + "\n".join(f"{_when(r['ts'])} — {r['text']} ({every_text(r['every'])})" for r in items)
         + "\n\nВидалити — кнопкою нижче."
     )
@@ -103,16 +109,44 @@ def buttons() -> list | None:
     rows = [[{"text": f"❌ {_when(r['ts'])} {r['text']}"[:48], "callback_data": f"delrem:{r['id']}"}] for r in items]
     if len(items) > 1:
         rows.append([{"text": "🗑 Видалити всі", "callback_data": "clear_rem"}])
-    return rows or None
+    return rows + mute_buttons()
 
 
 def _ping_buttons(r: dict) -> list:
     return [
-        [
-            {"text": "✅ Зроблено", "callback_data": f"remdone:{r['id']}"},
-            {"text": f"💤 +{SNOOZE_MIN} хв", "callback_data": f"remsnooze:{r['id']}"},
-        ]
+        [{"text": "✅ Зроблено", "callback_data": f"remdone:{r['id']}"}],
+        [{"text": f"💤 {_mins(m)}", "callback_data": f"remsnooze:{r['id']}:{m}"} for m in SNOOZE],
     ]
+
+
+def _mins(m: int) -> str:
+    return f"{m // 60} год" if m % 60 == 0 else f"{m} хв"
+
+
+def mute_text() -> str:
+    ts = mute.until()
+    if not ts:
+        return "🔔 Нагадування й таблетки увімкнені."
+    return f"🔕 Тиша до {time.strftime('%H:%M', time.localtime(ts))} — усе, що випаде, прийде після."
+
+
+def mute_buttons() -> list:
+    rows = [[{"text": f"🔕 {label}", "callback_data": f"тиша {arg}"} for label, arg in MUTE_PRESETS]]
+    if mute.active():
+        rows.append([{"text": "🔔 Зняти тишу", "callback_data": "тиша вимк"}])
+    return rows
+
+
+def _mute(ctx: Ctx, arg: str) -> None:
+    if not arg:
+        ctx.send(mute_text() + "\n\nСвій час: тиша 2 год, тиша 45 хв, тиша до 14:30", inline=mute_buttons())
+        return
+    ts = mute.parse(arg)
+    if ts is None:
+        ctx.send("🔕 Не зрозумів. Приклади: тиша 1 год, тиша 30 хв, тиша до 14:30, тиша до ранку, тиша вимк")
+        return
+    mute.set_until(ts or None)
+    ctx.send(mute_text(), inline=mute_buttons() if ts else None)
 
 
 def _remove(rid: str) -> dict | None:
@@ -179,14 +213,17 @@ def handle(ctx: Ctx, text: str) -> bool:
         r = _remove(text.split(":", 1)[1])
         ctx.send(f"✅ Зроблено: {r['text']}" if r else "✅ Це нагадування вже закрите.", menu=kb.MAIN)
     elif text.startswith("remsnooze:"):
-        rid = text.split(":", 1)[1]
+        _, rid, *mins = text.split(":")
+        mins = int(mins[0]) if mins and mins[0].isdigit() else SNOOZE_MIN
         with _lock:
             items = load()
             for r in items:
                 if r["id"] == rid:
-                    r["ts"] = time.time() + SNOOZE_MIN * 60
+                    r["ts"] = time.time() + mins * 60
             save(items)
-        ctx.send(f"💤 Нагадаю через {SNOOZE_MIN} хв.", menu=kb.MAIN)
+        ctx.send(f"💤 Нагадаю через {_mins(mins)}.", menu=kb.MAIN)
+    elif m := MUTE_RE.match(text.strip()):
+        _mute(ctx, (m.group(1) or "").strip())
     elif text == "clear_rem":
         with _lock:
             save([])
@@ -214,7 +251,7 @@ def handle(ctx: Ctx, text: str) -> bool:
 
 
 def tick(ctx: Ctx) -> None:
-    if sleepmode.held():  # held until "встав"
+    if sleepmode.held() or mute.active():  # held until "встав" or the end of the silence
         return
     now = time.time()
     with _lock:

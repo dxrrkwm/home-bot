@@ -18,6 +18,7 @@ RETRY_AFTER = 900
 
 # called after every successful sync (the panel keeps its cache fresh this way)
 on_synced = []
+last_error = {"text": None}  # of the last sync, for the health check
 _last_try = 0.0
 
 
@@ -69,10 +70,17 @@ def salary_text(cfg: dict) -> str:
     return "💼 Зарплата за графіком (орієнтовно, з KPI):\n" + "\n".join(lines) if lines else ""
 
 
+def deadlines(cfg: dict) -> dict:
+    # jar -> the date it is needed by; the university one is paid in february 2027
+    return cfg.get("goal_dates", {"На уник": "2027-02-01"})
+
+
 def summary(cfg: dict) -> str:
     if not mono.token():
         return HELP
     s = mono.summary(cfg.get("daily_budget", 280))
+    if s and (goals := mono.goals_text(mono.saved_goals(deadlines(cfg)))):
+        s += "\n\n" + goals
     if s and (pay := salary_text(cfg)):
         s += "\n\n" + pay
     return s or "⏳ Ще не тягнув виписку — зараз підтягну (≈ 2 хв, у mono ліміт 1 запит на хвилину)."
@@ -81,6 +89,7 @@ def summary(cfg: dict) -> str:
 def sync(ctx: Ctx | None = None) -> bool:
     # ctx means someone asked in the chat and wants to hear back
     def done(err):
+        last_error["text"] = str(err) if err else None
         if err:
             log(f"mono: {err!r}")
         else:

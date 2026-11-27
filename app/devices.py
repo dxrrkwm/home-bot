@@ -1,7 +1,7 @@
 # laptop and lamp: on this machine when it has them, otherwise through the agent on the laptop
 from app import link, role
 from app.log import log
-from app.services import laptop, powerlog
+from app.services import laptop, powerlog, presence
 
 
 def laptop_state() -> dict | None:
@@ -25,6 +25,13 @@ def idle_sec() -> int | None:
 
 def is_eco() -> bool:
     return laptop.is_eco() if role.HAS_DEVICES else bool((link.laptop_state() or {}).get("eco"))
+
+
+def phone_ago() -> int | None:
+    # seconds since the phone was on the home wi-fi; None when the laptop is out of reach or nobody watches
+    if role.HAS_DEVICES:
+        return presence.ago()
+    return (link.laptop_state() or {}).get("phone")
 
 
 def mode() -> str:

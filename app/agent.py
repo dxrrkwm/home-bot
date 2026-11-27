@@ -14,7 +14,7 @@ from app.features import light, money
 from app.log import log
 from app.main import SINGLE_INSTANCE_PORT as BOT_PORT
 from app.paths import HEARTBEAT, ROOT, TAKEOVER_HEARTBEAT
-from app.services import laptop
+from app.services import laptop, presence
 from app.telegram import Ctx
 
 SINGLE_INSTANCE_PORT = BOT_PORT + 1  # the bot itself takes main's port when it covers for the hub
@@ -195,6 +195,7 @@ def main() -> None:
     relay.on(link.HUB, lambda msg: msg.get("ts") and _hub.update(ts=msg["ts"]))  # ts 0 is the will
     relay.on(link.TAKEOVER, lambda msg: _was_covering.update(on=bool(msg.get("on"))))
     sync.start()
+    presence.start()
     takeover = Takeover()
     published = 0.0
     last_ac = None

@@ -30,9 +30,18 @@ def _git(*args: str) -> str:
     return (out.stdout + out.stderr).strip()
 
 
+def version() -> str:
+    return _git("rev-parse", "--short", "HEAD")
+
+
+def covering() -> bool:
+    # the laptop runs the whole bot because the hub is silent
+    return bool(os.environ.get("HOME_BOT_TAKEOVER"))
+
+
 def where() -> str:
-    text = f"🖥 Бот працює на {platform.node()} ({role.ROLE}), версія {_git('rev-parse', '--short', 'HEAD')}."
-    if os.environ.get("HOME_BOT_TAKEOVER"):
+    text = f"🖥 Бот працює на {platform.node()} ({role.ROLE}), версія {version()}."
+    if covering():
         text += "\nЦе ноут, який підміняє ПК з ботом."
     if not role.HAS_DEVICES:
         s = link.laptop_state()

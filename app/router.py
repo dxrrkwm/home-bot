@@ -5,6 +5,8 @@ from app import config
 from app import keyboards as kb
 from app.features import (
     band,
+    digest,
+    health,
     laptop,
     light,
     menu,
@@ -12,6 +14,7 @@ from app.features import (
     outage,
     pills,
     power,
+    presence,
     prices,
     reminders,
     sleep,
@@ -25,9 +28,25 @@ from app.telegram import Ctx, api
 lock = threading.Lock()
 
 # order matters: the first feature that understands the text answers, menu catches the rest
-FEATURES = [system, pills, station, outage, reminders, light, laptop, money, prices, sleep, band, menu]
+FEATURES = [
+    system,
+    health,
+    pills,
+    presence,
+    station,
+    outage,
+    reminders,
+    light,
+    laptop,
+    money,
+    prices,
+    sleep,
+    band,
+    digest,
+    menu,
+]
 # features with background work: start() once, tick(ctx) on every loop
-BACKGROUND = [station, outage, power, reminders, pills, money, prices, sleep, band, system, laptop]
+BACKGROUND = [station, outage, power, reminders, pills, money, prices, sleep, band, system, laptop, presence, digest]
 
 # short words people type, or words in other languages
 ALIASES = {

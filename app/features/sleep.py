@@ -18,6 +18,7 @@ PANEL_DAYS = 14
 
 # called after every sync (the panel keeps its card fresh this way)
 on_synced = []
+last_error = {"text": None}  # of the last sync, for the health check
 _last_try = 0.0
 
 
@@ -100,6 +101,7 @@ def _announce(ctx: Ctx, data: dict) -> None:
 def refresh(ctx: Ctx | None, answer: Ctx | None = None) -> bool:
     # ctx: where to announce a new sleep; answer: someone asked in the chat and waits
     def done(data, err):
+        last_error["text"] = str(err) if err else None
         if err:
             log(f"sleep: {err!r}")
         for fn in on_synced:

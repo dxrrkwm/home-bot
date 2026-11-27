@@ -22,6 +22,7 @@ def _config():
 OUT_DIR = Path(_config().get("mono_dir") or ROOT / "data" / "mono")
 CSV_PATH = OUT_DIR / "statement.csv"
 INFO_PATH = OUT_DIR / "client-info.json"  # no name or token, only accounts and jars
+HISTORY_PATH = OUT_DIR / "history.json"  # a point a day of the debt and the jars
 FIELDS = ["id", "time", "card", "account_type", "description", "mcc", "amount", "balance", "comment"]
 API = "https://api.monobank.ua"
 GAP = 62  # seconds between requests
@@ -84,7 +85,115 @@ def _save_info(info):
         ],
     }
     INFO_PATH.write_text(json.dumps(safe, ensure_ascii=False, indent=1), encoding="utf-8")
+    _remember(safe)
     return safe
+
+
+def _remember(safe):
+    # one point a day of the black card debt and the jars, to see how fast the goals move
+    try:
+        hist = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        hist = {}
+    debt = sum(max(c["limit"] - c["balance"], 0) for c in safe["cards"] if c["limit"] > 0)
+    hist[dt.date.today().isoformat()] = {"debt": round(debt), "jars": {j["title"]: j["balance"] for j in safe["jars"]}}
+    keep = sorted(hist)[-400:]
+    HISTORY_PATH.write_text(json.dumps({k: hist[k] for k in keep}, ensure_ascii=False), encoding="utf-8")
+
+
+def _debt_change(days=30):
+    # how much the debt went down over the last days, None while there is no history that old
+    try:
+        hist = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    since = (dt.date.today() - dt.timedelta(days=days)).isoformat()
+    old = [k for k in sorted(hist) if k <= since] or sorted(hist)
+    if not old or old[-1] == dt.date.today().isoformat():
+        return None
+    return hist[old[-1]]["debt"] - hist[max(hist)]["debt"], (dt.date.today() - dt.date.fromisoformat(old[-1])).days
+
+
+def _jar_flow(rows, title, days=30):
+    # put into a jar minus taken out of it over the last days, from the card statement
+    since = dt.date.today() - dt.timedelta(days=days)
+    return -sum(
+        float(r["amount"])
+        for r in rows
+        if dt.date.fromisoformat(r["time"][:10]) > since and title.lower() in r["description"].lower()
+    )
+
+
+MONTHS_GEN = ["січня", "лютого", "березня", "квітня", "травня", "червня", "липня", "серпня", "вересня", "жовтня", "листопада", "грудня"]  # fmt: skip
+
+
+def _date(d):
+    return f"{d.day} {MONTHS_GEN[d.month - 1]}" + (f" {d.year}" if d.year != dt.date.today().year else "")
+
+
+def saved_goals(deadlines=None):
+    if not INFO_PATH.exists():
+        return []
+    info = json.loads(INFO_PATH.read_text(encoding="utf-8"))
+    return goals(info, list(_read_csv().values()), deadlines)
+
+
+def goals_text(items):
+    lines = []
+    for g in items:
+        if g["kind"] == "debt":
+            line = f"⚫ Борг по чорній: {g['bal']:,} з {g['goal']:,}".replace(",", " ")
+            if g.get("month"):
+                line += f" · {'−' if g['month'] > 0 else '+'}{abs(g['month']):,}/міс".replace(",", " ")
+        else:
+            line = f"🎯 {g['n']}: {g['bal']:,} з {g['goal']:,} ({100 * g['bal'] // g['goal']}%)".replace(",", " ")
+            if g["month"]:
+                line += f" · +{g['month']:,} за 30 дн".replace(",", " ")
+            if g.get("deadline"):
+                line += f"\n   до {g['deadline']} треба ≈ {g['need']:,}/міс".replace(",", " ")
+        if g.get("eta"):
+            line += f" → у такому темпі {g['eta']}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def goals(info, rows, deadlines=None):
+    # jars with a goal and the black card debt: where it is, how fast it moves, when it gets there
+    deadlines = deadlines or {}
+    today = dt.date.today()
+    out = []
+    for j in info.get("jars", []):
+        if not j.get("goal"):
+            continue
+        left = max(j["goal"] - j["balance"], 0)
+        month = _jar_flow(rows, j["title"])
+        g = {
+            "n": j["title"],
+            "kind": "jar",
+            "bal": round(j["balance"]),
+            "goal": round(j["goal"]),
+            "month": round(month),
+        }
+        if left and month > 0:
+            g["eta"] = _date(today + dt.timedelta(days=int(left / (month / 30))))
+        if when := deadlines.get(j["title"]):
+            end = dt.date.fromisoformat(when)
+            months = max((end - today).days / 30, 0.5)
+            g["deadline"] = _date(end)
+            g["need"] = round(left / months)
+            g["late"] = month < g["need"]
+        out.append(g)
+    for c in info["cards"]:
+        if c["limit"] > 0:
+            debt = max(c["limit"] - c["balance"], 0)
+            g = {"n": "Чорна картка", "kind": "debt", "bal": round(debt), "goal": round(c["limit"])}
+            if (change := _debt_change()) is not None:
+                paid, days = change
+                g["month"] = round(paid / days * 30)
+                if debt and paid > 0:
+                    g["eta"] = _date(today + dt.timedelta(days=int(debt / (paid / days))))
+            out.append(g)
+    return out
 
 
 def _read_csv():

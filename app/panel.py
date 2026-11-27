@@ -2,9 +2,9 @@
 import threading
 
 from app import config, keyboards, relay, router, telegram
-from app.features import band, light, money, prices, reminders, sleep, station
+from app.features import band, health, light, money, prices, reminders, sleep, station
 from app.log import log
-from app.services import mono
+from app.services import mono, mute
 from app.services import sleep as cloud
 
 FIN_STALE_SEC = 15 * 60
@@ -19,6 +19,7 @@ def publish_finance() -> None:
     if data:
         data["syncing"] = mono.is_syncing()
         data["salary"] = money.salary(cfg)
+        data["goals"] = mono.saved_goals(money.deadlines(cfg))
         publish("fin", data)
 
 
@@ -36,6 +37,12 @@ def _lamp() -> None:
     with router.lock:
         state = light.state()
     publish("lamp", state)
+
+
+def _health() -> None:
+    with router.lock:  # the lamp is asked too
+        data = health.panel_data()
+    publish("health", data)
 
 
 def publish_prices() -> None:
@@ -90,6 +97,8 @@ REQUESTS = {
     "lamp-state": lambda arg: _lamp(),
     "station-panel": lambda arg: _station(arg == "force"),
     "rem-list": lambda arg: publish("reminders", reminders.panel_list()),
+    "mute-state": lambda arg: publish("mute", {"until": mute.until()}),
+    "health": lambda arg: _health(),
     "prices-panel": lambda arg: _prices(arg == "force"),
     "sleep-panel": lambda arg: _sleep(arg == "force"),
     "band-panel": lambda arg: _band(arg == "force"),

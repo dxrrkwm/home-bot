@@ -20,6 +20,9 @@ FILES = [
     "station_state.json",
     "light_state.json",
     "sleep_state.json",
+    "mute_state.json",
+    "presence_state.json",
+    "digest_state.json",
     "band_state.json",
     "shifts.json",
 ]

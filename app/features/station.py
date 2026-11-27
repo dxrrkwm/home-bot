@@ -73,6 +73,22 @@ def _hm_end(a: dt.datetime, b: dt.datetime) -> str:
     return "24:00" if b.date() > a.date() and b.time() == dt.time() else b.strftime("%H:%M")
 
 
+def runtime(s: dict | None, stats: dict | None = None, watts: float | None = None) -> int | None:
+    # minutes the station keeps everything on: its own estimate, else the load it gives now
+    # (on the grid in ups mode it passes the load through), else the drain of the last week
+    if not s or not s.get("online"):
+        return None
+    if watts:
+        return int(max(s["pct"] - 5, 0) / 100 * station.CAPACITY_WH / watts * 60)
+    if s.get("mins_left"):
+        return s["mins_left"]
+    if s.get("out_w", 0) > 5:
+        return runtime(s, watts=s["out_w"])
+    stats = stats or powerlog.stats(7) or {}
+    drain = stats["supply"][0] if stats.get("supply") else None
+    return int(max(s["pct"] - 5, 0) / drain * 60) if drain else None
+
+
 def panel_data(cfg: dict, force: bool = False) -> dict:
     s = monitor.fresh(max_age=0 if force else 30) if station.configured() else None
     ac, lpct = devices.power()
@@ -99,10 +115,7 @@ def panel_data(cfg: dict, force: bool = False) -> dict:
             since = monitor.outage_start[0]
         elif stats["outages"]:
             since = stats["outages"][-1][0]
-    drain = stats["supply"][0] if stats["supply"] else None
-    est = None
-    if s and drain:
-        est = s.get("mins_left") or int(max(s["pct"] - 5, 0) / drain * 60)
+    est = runtime(s, stats)
     upcoming = [(a, b) for a, b in plan if b > dt.datetime.now()]
     return {
         "upd": time.strftime("%H:%M"),
@@ -129,7 +142,7 @@ def panel_data(cfg: dict, force: bool = False) -> dict:
         "days": days,
         "count": len(stats["outages"]),
         "hours": round(sum(b - a for a, b in stats["outages"]) / 3600, 1),
-        "drain": drain and round(drain, 1),
+        "drain": stats["supply"] and round(stats["supply"][0], 1),
         "charge_rate": stats["charging"] and round(stats["charging"][0]),
         "hist": powerlog.battery(24),
         "plan": [[_day_name(a), a.strftime("%H:%M"), _hm_end(a, b)] for a, b in upcoming[:6]],

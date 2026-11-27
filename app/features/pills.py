@@ -1,8 +1,8 @@
 import re
 
 from app import keyboards as kb
+from app.services import mute, sleepmode
 from app.services import pills as meds
-from app.services import sleepmode
 from app.telegram import Ctx
 
 PILL_RE = re.compile(r"^\s*(таблетк|ліки|лекарств|пігулк)", re.I)
@@ -48,7 +48,7 @@ def handle(ctx: Ctx, text: str) -> bool:
 
 
 def tick(ctx: Ctx) -> None:
-    if sleepmode.held():  # held until "встав"
+    if sleepmode.held() or mute.active():  # held until "встав" or the end of the silence
         return
     for key, name, t, again in meds.due():
         ctx.send(

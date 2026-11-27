@@ -2,7 +2,7 @@ import re
 import threading
 import time
 
-from app import config
+from app import config, devices
 from app import keyboards as kb
 from app.features import station as st
 from app.log import log
@@ -39,7 +39,27 @@ def handle(ctx: Ctx, text: str) -> bool:
     return False
 
 
-def _warning(key: str, mins: int, start_at, end_at, maybe: bool) -> str | None:
+MIN_WATTS = 27  # laptop in min and the router, measured 2026-11-27
+MIN_BUTTON = [[{"text": "🌑 Ноут у «Мінімум»", "callback_data": kb.MIN}]]
+
+
+def _enough(s: dict | None, start_at, end_at) -> tuple[str, list | None]:
+    # will the station hold out the whole outage with the load it has now, and in min
+    left = st.runtime(s)
+    if not left:
+        return "", None
+    need = int((end_at - start_at).total_seconds() // 60)
+    text = f"\n🔋 Станція {s['pct']}%, вистачить ≈ {station.fmt_mins(left)} — "
+    if left >= need * 1.15:
+        return text + "з запасом.", None
+    in_min = st.runtime(s, watts=MIN_WATTS)
+    if devices.mode() != "min" and in_min and in_min > left:
+        more = "вистачить" if in_min >= need else f"протягне ≈ {station.fmt_mins(in_min)}"
+        return text + f"на все відключення ({station.fmt_mins(need)}) не вистачить. У «Мінімумі» {more}.", MIN_BUTTON
+    return text + f"на все відключення ({station.fmt_mins(need)}) не вистачить.", None
+
+
+def _warning(key: str, mins: int, start_at, end_at, maybe: bool) -> tuple[str, list | None] | None:
     end = "24:00" if end_at.date() > start_at.date() else end_at.strftime("%H:%M")
     when = f"{start_at:%H:%M}–{end}" + (" (можливо)" if maybe else "")
     s = st.monitor.last if station.configured() else None
@@ -47,25 +67,27 @@ def _warning(key: str, mins: int, start_at, end_at, maybe: bool) -> str | None:
         # the station takes over by itself, so one heads-up is enough
         if not key.startswith("h1:"):
             return None
-        return f"⏰ За графіком через {mins} хв відключення: {when}." + (f" Станція {s['pct']}%." if s else "")
+        extra, inline = _enough(s, start_at, end_at)
+        return f"⏰ За графіком через {mins} хв відключення: {when}." + extra, inline
     if key.startswith("h1:"):
         msg = f"⏰ Через {mins} хв відключення: {when}."
-        if s and s.get("online"):
-            msg += f"\nСтанція {s['pct']}%" + (" — постав заряджатись, поки є час." if s["pct"] < 80 else " — готова.")
-        return msg
+        if s and s.get("online") and s["pct"] < 80:
+            return msg + f"\nСтанція {s['pct']}% — постав заряджатись, поки є час.", None
+        extra, inline = _enough(s, start_at, end_at)
+        return msg + extra, inline
 
     msg = f"⚠️ Через {mins} хв вимкнуть світло ({when}). Збережи гру/роботу."
     if not station.configured():
-        return msg
+        return msg, None
     if not (s and s.get("online") and time.time() - s["ts"] < 600):
-        return msg + "\n🔋 Увімкни станцію, натисни AC і підключи роутер та ноут."
+        return msg + "\n🔋 Увімкни станцію, натисни AC і підключи роутер та ноут.", None
     st.monitor.hold_ac_until = end_at.timestamp()
     try:
         if st.monitor.set_ac(True, "(перед відключенням)"):
             msg += "\n🔌 Увімкнув розетку на станції — можеш одразу переключити ноут на неї."
     except Exception as e:
         log(f"станція: {e!r}")
-    return msg
+    return msg, None
 
 
 def _on_shift(start_at, end_at) -> str:
@@ -76,6 +98,6 @@ def _on_shift(start_at, end_at) -> str:
 
 def tick(ctx: Ctx) -> None:
     for key, mins, (start_at, end_at, maybe) in outage.due_warnings(ctx.cfg.get("outage_group")):
-        if msg := _warning(key, mins, start_at, end_at, maybe):
-            ctx.send(msg + _on_shift(start_at, end_at))
+        if warn := _warning(key, mins, start_at, end_at, maybe):
+            ctx.send(warn[0] + _on_shift(start_at, end_at), inline=warn[1])
         outage.mark(key)

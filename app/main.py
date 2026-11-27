@@ -7,6 +7,7 @@ import time
 from app import config, handover, link, panel, relay, role, router, sync
 from app.log import log
 from app.paths import HEARTBEAT, TAKEOVER_HEARTBEAT
+from app.services import presence
 from app.telegram import Ctx, api, flush
 
 SINGLE_INSTANCE_PORT = int(os.environ.get("HOME_BOT_PORT", 47321))
@@ -80,6 +81,8 @@ def main() -> None:
     else:
         relay.connect()
     sync.pull()
+    if role.HAS_DEVICES:
+        presence.start()
     router.start_background()
     panel.start()
 

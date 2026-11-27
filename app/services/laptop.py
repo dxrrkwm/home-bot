@@ -4,6 +4,7 @@ import re
 import subprocess
 
 from app.paths import ECO_PS1
+from app.services import presence
 
 SAVER_GUID = "637dba06-ebd6-4e7a-9933-1fe199f85bbb"
 MIN_GUID = "b0710000-5eed-4e1e-9a1a-000000000001"  # made by eco.ps1 -Mode min
@@ -118,4 +119,13 @@ def snapshot() -> dict:
     ac, pct = power()
     guid, plan = active_plan()
     m = "min" if guid == MIN_GUID else "eco" if guid == SAVER_GUID else "normal"
-    return {"ac": ac, "pct": pct, "eco": m != "normal", "mode": m, "plan": plan, "hz": refresh_hz(), "idle": idle_sec()}
+    return {
+        "ac": ac,
+        "pct": pct,
+        "eco": m != "normal",
+        "mode": m,
+        "plan": plan,
+        "hz": refresh_hz(),
+        "idle": idle_sec(),
+        "phone": presence.ago(),
+    }
