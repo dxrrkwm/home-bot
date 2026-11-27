@@ -33,11 +33,11 @@ def _steps() -> str | None:
 
 
 def _money(cfg: dict) -> str | None:
-    data = mono.panel_data(cfg.get("daily_budget", 280))
+    data = mono.panel_data(money.budget(cfg))
     if not data:
         return None
     week = sum(v for _, v in data["days"][-7:])
-    budget = cfg.get("daily_budget", 280) * 7
+    budget = data["budget"] * 7
     diff = budget - week
     line = f"💰 Витрати: {money.uah(week)} грн з {money.uah(budget)}"
     line += f" — зекономив {money.uah(diff)}." if diff >= 0 else f" — понад на {money.uah(-diff)}."

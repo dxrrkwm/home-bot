@@ -131,6 +131,69 @@ def _date(d):
     return f"{d.day} {MONTHS_GEN[d.month - 1]}" + (f" {d.year}" if d.year != dt.date.today().year else "")
 
 
+def _next_day(day, today):
+    # the next date with this day of month, today included
+    d = today.replace(day=min(day, 28))
+    if d < today:
+        d = (d.replace(day=28) + dt.timedelta(days=4)).replace(day=min(day, 28))
+    return d
+
+
+def allowance(payday, bills, goals_list):
+    # how much can go out a day till the salary: the white card at the start of today minus the bills
+    # due before payday and the part of the goals with a deadline, split over the days left
+    if not INFO_PATH.exists():
+        return None
+    info = json.loads(INFO_PATH.read_text(encoding="utf-8"))
+    white = next((c for c in info["cards"] if c.get("type") == "white"), None)
+    if not white:
+        return None
+    today = dt.date.today()
+    pay = _next_day(payday, today + dt.timedelta(days=1))
+    days = (pay - today).days
+    spent = -sum(
+        float(r["amount"]) for r in _read_csv().values() if _is_daily_spend(r) and r["time"][:10] == today.isoformat()
+    )
+    reserve = []
+    for b in bills:
+        due = _next_day(b["day"], today)
+        if due < pay:
+            reserve.append({"n": b["name"], "sum": b["sum"], "when": _date(due)})
+    for g in goals_list:
+        if g.get("need"):
+            reserve.append({"n": f"відкласти в «{g['n']}»", "sum": round(g["need"] * days / 30), "when": "до ЗП"})
+    start = white["balance"] + spent
+    free = start - sum(r["sum"] for r in reserve)
+    per_day = max(free, 0) / days
+    return {
+        "per_day": round(per_day),
+        "spent": round(spent),
+        "left": round(per_day - spent),
+        "days": days,
+        "payday": _date(pay),
+        "balance": round(white["balance"]),
+        "reserve": reserve,
+        "free": round(free),
+    }
+
+
+def _n(n):
+    return f"{n:,.0f}".replace(",", " ")
+
+
+def allowance_text(a):
+    lines = [f"💸 До зарплати ({a['payday']}) {a['days']} дн. Можна ≈ {_n(a['per_day'])} грн на день."]
+    if a["free"] < 0:
+        lines.append(f"⚠️ На обов'язкове не вистачає {_n(-a['free'])} грн.")
+    left = a["left"]
+    lines.append(
+        f"Сьогодні: {_n(a['spent'])} грн, " + (f"ще можна {_n(left)}" if left >= 0 else f"понад на {_n(-left)}")
+    )
+    if a["reserve"]:
+        lines.append("Відкладено з білої: " + "; ".join(f"{r['n']} {_n(r['sum'])} ({r['when']})" for r in a["reserve"]))
+    return "\n".join(lines)
+
+
 def saved_goals(deadlines=None):
     if not INFO_PATH.exists():
         return []
@@ -286,7 +349,7 @@ def _is_daily_spend(r):
     return not any(w.lower() in d.lower() for w in SKIP_WORDS)
 
 
-def summary(daily_budget=280):
+def summary(daily_budget=280, today_line=True):
     if not INFO_PATH.exists():
         return None
     info = json.loads(INFO_PATH.read_text(encoding="utf-8"))
@@ -311,14 +374,15 @@ def summary(daily_budget=280):
         lines.append(f"🫙 {j['title']}: {fmt(j['balance'])} грн" + (f" з {fmt(j['goal'])}" if j.get("goal") else ""))
     left = daily_budget - t
     lines.append("")
-    lines.append(
-        f"Сьогодні витрачено: {t:,.0f} з {daily_budget} грн".replace(",", " ")
-        + (
-            f" (ще можна {left:,.0f})".replace(",", " ")
-            if left >= 0
-            else f" (понад бюджет на {-left:,.0f})".replace(",", " ")
+    if today_line:
+        lines.append(
+            f"Сьогодні витрачено: {t:,.0f} з {daily_budget} грн".replace(",", " ")
+            + (
+                f" (ще можна {left:,.0f})".replace(",", " ")
+                if left >= 0
+                else f" (понад бюджет на {-left:,.0f})".replace(",", " ")
+            )
         )
-    )
     lines.append(f"Середньо за 7 днів: {w:,.0f} грн/день".replace(",", " "))
     saved = dt.datetime.fromisoformat(info["saved"])
     lines.append(f"\nОновлено: {saved:%d.%m %H:%M}")

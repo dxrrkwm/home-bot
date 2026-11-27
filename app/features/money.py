@@ -75,10 +75,33 @@ def deadlines(cfg: dict) -> dict:
     return cfg.get("goal_dates", {"На уник": "2027-02-01"})
 
 
+def bills(cfg: dict) -> list:
+    # monthly payments that leave the white card: rent goes to its jar about the 2nd, the station installment the 13th
+    return cfg.get(
+        "bills",
+        [{"name": "оренда", "day": 2, "sum": 12000}, {"name": "розстрочка станції", "day": 13, "sum": 4000}],
+    )
+
+
+def allowance(cfg: dict) -> dict | None:
+    goals = mono.saved_goals(deadlines(cfg))
+    return mono.allowance(cfg.get("pay", {}).get("payday", 7), bills(cfg), goals)
+
+
+def budget(cfg: dict) -> int:
+    # a day's money: what is left till the salary, the fixed daily_budget only when that can not be counted
+    a = allowance(cfg)
+    return a["per_day"] if a else cfg.get("daily_budget", 280)
+
+
 def summary(cfg: dict) -> str:
     if not mono.token():
         return HELP
-    s = mono.summary(cfg.get("daily_budget", 280))
+    a = allowance(cfg)
+    s = mono.summary(a["per_day"] if a else cfg.get("daily_budget", 280), today_line=not a)
+    if s and a:  # right after the cards and jars, before the averages
+        head, _, tail = s.partition("\n\n")
+        s = f"{head}\n\n{mono.allowance_text(a)}\n{tail.strip()}"
     if s and (goals := mono.goals_text(mono.saved_goals(deadlines(cfg)))):
         s += "\n\n" + goals
     if s and (pay := salary_text(cfg)):

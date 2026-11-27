@@ -15,11 +15,12 @@ publish = relay.publish
 
 def publish_finance() -> None:
     cfg = config.load()
-    data = mono.panel_data(cfg.get("daily_budget", 280))
+    data = mono.panel_data(money.budget(cfg))
     if data:
         data["syncing"] = mono.is_syncing()
         data["salary"] = money.salary(cfg)
         data["goals"] = mono.saved_goals(money.deadlines(cfg))
+        data["allow"] = money.allowance(cfg)
         publish("fin", data)
 
 
@@ -30,7 +31,7 @@ def _finance(force: bool = False) -> None:
 
 
 def _detail(key: str) -> None:
-    publish("detail", mono.details(key, config.load().get("daily_budget", 280)))
+    publish("detail", mono.details(key, money.budget(config.load())))
 
 
 def _lamp() -> None:
