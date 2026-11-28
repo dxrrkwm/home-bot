@@ -36,6 +36,7 @@ CONFIG_KEYS = [
     "daily_budget",
     "panel_version",
     "pay",
+    "plan",
     "steps_goal",
 ]
 PUSH_SEC = 60

@@ -1,9 +1,11 @@
 import datetime as dt
+import json
 import time
 
+from app import config
 from app import keyboards as kb
 from app.log import log
-from app.services import mono, shifts
+from app.services import mono, mute, shifts
 from app.telegram import Ctx
 
 HELP = (
@@ -148,6 +150,9 @@ def handle(ctx: Ctx, text: str) -> bool:
         ctx.send(summary(ctx.cfg), menu=kb.MAIN)
         if mono.token() and age() > 3 * 3600:
             sync(ctx)
+    elif text.lower() in ("день", "план", "/day"):
+        p = plan(ctx.cfg)
+        ctx.send(plan_text(p) if p else "План ще не почався або нема виписки.", menu=kb.MAIN)
     elif text == kb.SYNC:
         if not mono.token():
             ctx.send(summary(ctx.cfg), menu=kb.MAIN)
@@ -158,8 +163,82 @@ def handle(ctx: Ctx, text: str) -> bool:
     return True
 
 
+def plan(cfg: dict) -> dict | None:
+    # "plan": {"start": "2026-11-29", "shops": [...], "limit": 5000, "at": 22} in config.json
+    p = cfg.get("plan")
+    if not p or not mono.CSV_PATH.exists() or dt.date.today().isoformat() < p["start"]:
+        return None
+    return mono.plan(p["start"], p.get("shops", []), p.get("limit", 5000))
+
+
+def _tip(p: dict) -> str:
+    if not p["food_today"]:
+        return "День без магазину під домом і кафе — саме так і з'являються вільні гроші."
+    if p["left"] < 0:
+        return (
+            "Ліміт на магазини під домом і кафе цього місяця вже весь — до кінця місяця їж з дому, у box лише перекус."
+        )
+    if p["food_today"] > 2 * p["norm"]:
+        days = round(p["food_today"] / p["norm"])
+        return f"Сьогодні магазин під домом і кафе з'їли норму {days} днів. Завтра їж з дому, у box — тільки перекус."
+    return "У межах норми — так і далі."
+
+
+def plan_text(p: dict) -> str:
+    lines = [
+        f"🌙 Сьогодні витрачено {uah(p['today'])} грн, з них під домом і в кафе {uah(p['food_today'])} (норма ≈ {p['norm']}).",
+    ]
+    left = p["left"]
+    line = f"🛒 Магазини під домом і кафе за місяць: {uah(p['month_food'])} з {uah(p['month_limit'])}"
+    if left >= 0 and p["days_left"]:
+        line += f", лишилось {uah(left)} на {p['days_left']} дн (≈ {uah(left / p['days_left'])}/день)."
+    else:
+        line += f" — понад на {uah(-left)}." if left < 0 else "."
+    lines.append(line)
+    if p["saved"] >= 0:
+        lines.append(
+            f"💰 З {p['start']} витрачаєш на {uah(p['saved'])} грн менше, ніж раніше (≈ {uah(p['usual'])}/день)."
+        )
+    else:
+        lines.append(
+            f"💰 З {p['start']} поки на {uah(-p['saved'])} грн більше, ніж раніше — нічого, завтра новий день."
+        )
+    lines.append("👉 " + _tip(p))
+    return "\n".join(lines)
+
+
+def _sent_day() -> str | None:
+    try:
+        return json.loads(mono.MARKS_PATH.read_text(encoding="utf-8")).get("plan_sent")
+    except Exception:
+        return None
+
+
+def _mark_sent(day: str) -> None:
+    try:
+        state = json.loads(mono.MARKS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        state = {}
+    state["plan_sent"] = day
+    mono.MARKS_PATH.write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def _evening(ctx: Ctx) -> None:
+    # the day in money once an evening, after the silence if there is one
+    cfg = config.load()
+    today = dt.date.today().isoformat()
+    if dt.datetime.now().hour < cfg.get("plan", {}).get("at", 22) or _sent_day() == today or mute.active():
+        return
+    p = plan(cfg)
+    if p:
+        _mark_sent(today)
+        ctx.send(plan_text(p), menu=kb.MAIN)
+
+
 def tick(ctx: Ctx) -> None:
     global _last_try
+    if ctx:
+        _evening(ctx)
     if mono.token() and not mono.is_syncing() and age() > SYNC_EVERY and time.time() - _last_try > RETRY_AFTER:
         _last_try = time.time()
         sync()

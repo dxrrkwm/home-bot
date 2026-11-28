@@ -1,5 +1,6 @@
 # monobank personal api: balances and statement, 1 request a minute so sync runs in the background
 
+import calendar
 import csv
 import datetime as dt
 import json
@@ -750,3 +751,39 @@ def details(key, daily_budget=280):
             for r in found
         ]
     return {"id": key, "items": items[:40], "count": len(items), "total": round(sum(i[2] for i in items))}
+
+
+def plan(start, shops, limit):
+    # from `start` on: ready food (the shops near home and cafes) within a monthly limit,
+    # and how much less goes out a day than in the 30 days before
+    start = dt.date.fromisoformat(start)
+    today = dt.date.today()
+    spent, food = {}, {}
+    for r in _read_csv().values():
+        if not _is_daily_spend(r):
+            continue
+        d = r["time"][:10]
+        spent[d] = spent.get(d, 0) - float(r["amount"])
+        if int(r["mcc"] or 0) in CAFE or _has(r, *shops):
+            food[d] = food.get(d, 0) - float(r["amount"])
+    on = lambda m, d: m.get(d.isoformat(), 0)  # noqa: E731
+    usual = sum(on(spent, start - dt.timedelta(days=i)) for i in range(1, 31)) / 30
+    days = [start + dt.timedelta(days=i) for i in range((today - start).days + 1)]
+
+    month_len = calendar.monthrange(today.year, today.month)[1]
+    first = max(start, today.replace(day=1))
+    month_limit = limit * (month_len - first.day + 1) / month_len  # a plan started mid-month gets its share
+    month_food = sum(on(food, first + dt.timedelta(days=i)) for i in range((today - first).days + 1))
+    return {
+        "start": _date(start),
+        "days": len(days),
+        "usual": round(usual),
+        "saved": round(usual * len(days) - sum(on(spent, d) for d in days)),
+        "today": round(on(spent, today)),
+        "food_today": round(on(food, today)),
+        "norm": round(limit / month_len),
+        "month_food": round(month_food),
+        "month_limit": round(month_limit),
+        "left": round(month_limit - month_food),
+        "days_left": month_len - today.day,
+    }
