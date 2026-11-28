@@ -455,7 +455,7 @@ def _lent_back(r, rows):
     )
 
 
-MARKS_PATH = ROOT / "money_state.json"  # {"transit": {operation id: why}}: someone else's money passing through
+MARKS_PATH = ROOT / "money_state.json"  # {"transit": {operation id: how much of it is someone else's}}
 
 
 def _transit():
@@ -465,9 +465,14 @@ def _transit():
         return {}
 
 
+def _own(r):
+    # the part of an operation that is really mine, without someone else's money passing through
+    return float(r["amount"]) - _transit().get(r["id"], 0)
+
+
 def _is_income(r, rows):
     # money from outside: salary, the fop account, cash in, people; not own cards, jars, refunds, a loan back or transit
-    if float(r["amount"]) <= 0 or str(r.get("mcc")) not in TRANSFERS or r["id"] in _transit():
+    if float(r["amount"]) <= 0 or str(r.get("mcc")) not in TRANSFERS or _own(r) <= 0:
         return False
     d = r["description"]
     if "«" in d or any(w.lower() in d.lower() for w in SKIP_WORDS):  # «» is a jar
@@ -569,7 +574,7 @@ def panel_data(daily_budget=280):
         "days": days,
         "avg7": round(sum(v for _, v in days[-7:]) / 7),
         "mspent": round(-sum(float(r["amount"]) for r in month if _is_daily_spend(r))),
-        "mincome": round(sum(float(r["amount"]) for r in month if _is_income(r, rows))),
+        "mincome": round(sum(_own(r) for r in month if _is_income(r, rows))),
         "cats": sorted([[k, round(v)] for k, v in cats.items()], key=lambda x: -x[1]),
         "tips": insights(rows, daily_budget),
         "goods": goods(rows, daily_budget),
@@ -741,7 +746,7 @@ def details(key, daily_budget=280):
         f = _filter(key, rows)
         found = sorted((r for r in _period(rows, key) if f(r)), key=lambda r: r["time"], reverse=True)
         items = [
-            [f"{r['time'][8:10]}.{r['time'][5:7]} {r['time'][11:16]}", r["description"][:40], round(float(r["amount"]))]
+            [f"{r['time'][8:10]}.{r['time'][5:7]} {r['time'][11:16]}", r["description"][:40], round(_own(r))]
             for r in found
         ]
     return {"id": key, "items": items[:40], "count": len(items), "total": round(sum(i[2] for i in items))}
