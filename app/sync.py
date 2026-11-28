@@ -25,6 +25,7 @@ FILES = [
     "digest_state.json",
     "band_state.json",
     "shifts.json",
+    "money_state.json",
 ]
 # settings that change from the chat
 CONFIG_KEYS = [

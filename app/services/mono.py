@@ -455,9 +455,19 @@ def _lent_back(r, rows):
     )
 
 
+MARKS_PATH = ROOT / "money_state.json"  # {"transit": {operation id: why}}: someone else's money passing through
+
+
+def _transit():
+    try:
+        return json.loads(MARKS_PATH.read_text(encoding="utf-8")).get("transit", {})
+    except Exception:
+        return {}
+
+
 def _is_income(r, rows):
-    # money from outside: salary, the fop account, cash in, people; not own cards, jars, refunds or a loan back
-    if float(r["amount"]) <= 0 or str(r.get("mcc")) not in TRANSFERS:
+    # money from outside: salary, the fop account, cash in, people; not own cards, jars, refunds, a loan back or transit
+    if float(r["amount"]) <= 0 or str(r.get("mcc")) not in TRANSFERS or r["id"] in _transit():
         return False
     d = r["description"]
     if "«" in d or any(w.lower() in d.lower() for w in SKIP_WORDS):  # «» is a jar
