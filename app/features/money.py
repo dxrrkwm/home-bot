@@ -16,7 +16,7 @@ HELP = (
 SYNC_EVERY = 3600
 RETRY_AFTER = 900
 
-# called after every successful sync (the panel keeps its cache fresh this way)
+# called after every sync, done or failed (the panel keeps its cache fresh this way)
 on_synced = []
 last_error = {"text": None}  # of the last sync, for the health check
 _last_try = 0.0
@@ -127,12 +127,11 @@ def sync(ctx: Ctx | None = None) -> bool:
         last_error["text"] = str(err) if err else None
         if err:
             log(f"mono: {err!r}")
-        else:
-            for fn in on_synced:
-                try:
-                    fn()
-                except Exception as e:
-                    log(f"after sync: {e!r}")
+        for fn in on_synced:  # on errors too, or the panel keeps saying it is syncing
+            try:
+                fn()
+            except Exception as e:
+                log(f"after sync: {e!r}")
         if ctx and err:
             ctx.send(f"💰 Не вийшло оновити виписку: {err}", menu=kb.MAIN)
         elif ctx:

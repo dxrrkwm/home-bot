@@ -18,6 +18,7 @@ def publish_finance() -> None:
     data = mono.panel_data(money.budget(cfg))
     if data:
         data["syncing"] = mono.is_syncing()
+        data["error"] = money.last_error["text"]
         data["salary"] = money.salary(cfg)
         data["goals"] = mono.saved_goals(money.deadlines(cfg))
         data["allow"] = money.allowance(cfg)
@@ -28,7 +29,7 @@ def publish_finance() -> None:
 
 def _finance(force: bool = False) -> None:
     if mono.token() and not mono.is_syncing() and money.age() > (FIN_FORCE_SEC if force else FIN_STALE_SEC):
-        mono.sync_in_background(done=lambda err: publish_finance())
+        money.sync()
     publish_finance()
 
 

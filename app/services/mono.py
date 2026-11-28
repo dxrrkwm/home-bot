@@ -5,6 +5,7 @@ import datetime as dt
 import json
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -48,11 +49,17 @@ def _get(path):
         if wait > 0:
             time.sleep(wait)
         req = urllib.request.Request(API + path, headers={"X-Token": token()})
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return json.loads(r.read().decode())
-        finally:
-            _last_call = time.time()
+        for attempt in range(2):
+            try:
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    return json.loads(r.read().decode())
+            except urllib.error.HTTPError as e:
+                # the hub and the laptop share the token, so one of them can hit the limit: wait and try once more
+                if e.code != 429 or attempt:
+                    raise
+                time.sleep(GAP)
+            finally:
+                _last_call = time.time()
 
 
 def _cards(info):
@@ -164,12 +171,20 @@ def allowance(payday, bills, goals_list):
         due = _next_day(b["day"], today)
         if due < pay:
             reserve.append({"n": b["name"], "sum": b["sum"], "when": _date(due)})
-    for g in goals_list:
-        if g.get("need"):
-            reserve.append({"n": f"відкласти в «{g['n']}»", "sum": round(g["need"] * days / 30), "when": "до ЗП"})
     start = white["balance"] + spent
     free = start - sum(r["sum"] for r in reserve)
-    per_day = max(free, 0) / days
+    # the goals are put aside only when they fit, the bills come first
+    skipped = []
+    for g in goals_list:
+        if g.get("need"):
+            part = {"n": f"відкласти в «{g['n']}»", "sum": round(g["need"] * days / 30), "when": "до ЗП", "goal": True}
+            if part["sum"] <= free:
+                reserve.append(part)
+                free -= part["sum"]
+            else:
+                skipped.append(part)
+    # nothing left after today's spending: no money a day, whatever the morning said
+    per_day = max(free, 0) / days if free > spent else 0
     return {
         "per_day": round(per_day),
         "spent": round(spent),
@@ -178,7 +193,9 @@ def allowance(payday, bills, goals_list):
         "payday": _date(pay),
         "balance": round(white["balance"]),
         "reserve": reserve,
-        "free": round(free),
+        "skipped": skipped,
+        "free": round(free),  # at the start of today
+        "free_now": round(free - spent),
     }
 
 
@@ -229,26 +246,32 @@ def till_payday(a, bills, avg):
 
 
 def forecast_text(t):
+    pace = f"Якщо витрачати як цього тижня (≈ {_n(t['avg'])}/день)"
     if t["end"] >= 0:
-        return (
-            f"📈 Якщо витрачати як цього тижня (≈ {_n(t['avg'])}/день), на {t['payday']} лишиться ≈ {_n(t['end'])} грн."
-        )
-    return (
-        f"📉 Якщо витрачати як цього тижня (≈ {_n(t['avg'])}/день), до {t['payday']} не вистачить ≈ {_n(-t['end'])} грн. "
-        f"Тримай ≈ {_n(t['per_day'])}/день — і зійдеться."
-    )
+        return f"📈 {pace}, на {t['payday']} лишиться ≈ {_n(t['end'])} грн."
+    if not t["per_day"]:
+        return f"📉 {pace}, до {t['payday']} буде мінус ≈ {_n(-t['end'])} грн."
+    return f"📉 {pace}, до {t['payday']} не вистачить ≈ {_n(-t['end'])} грн. Тримай ≈ {_n(t['per_day'])}/день — і зійдеться."
 
 
 def allowance_text(a):
-    lines = [f"💸 До зарплати ({a['payday']}) {a['days']} дн. Можна ≈ {_n(a['per_day'])} грн на день."]
-    if a["free"] < 0:
-        lines.append(f"⚠️ На обов'язкове не вистачає {_n(-a['free'])} грн.")
-    left = a["left"]
-    lines.append(
-        f"Сьогодні: {_n(a['spent'])} грн, " + (f"ще можна {_n(left)}" if left >= 0 else f"понад на {_n(-left)}")
-    )
-    if a["reserve"]:
-        lines.append("Відкладено з білої: " + "; ".join(f"{r['n']} {_n(r['sum'])} ({r['when']})" for r in a["reserve"]))
+    head = f"💸 До зарплати ({a['payday']}) {a['days']} дн."
+    owed = ", ".join(f"{r['n']} {_n(r['sum'])} ({r['when']})" for r in a["reserve"])
+    if not a["per_day"]:
+        short = f"бракує {_n(-a['free_now'])} грн" if a["free_now"] < 0 else "впритул"
+        lines = [f"{head} Вільних грошей нема: на білій {_n(a['balance'])}, а до ЗП ще {owed or 'нічого'} — {short}."]
+        if a["spent"]:
+            lines.append(f"Сьогодні витрачено {_n(a['spent'])} грн.")
+    else:
+        left = a["left"]
+        lines = [
+            f"{head} Можна ≈ {_n(a['per_day'])} грн на день.",
+            f"Сьогодні: {_n(a['spent'])} грн, " + (f"ще можна {_n(left)}" if left >= 0 else f"понад на {_n(-left)}"),
+        ]
+        if owed:
+            lines.append("Відкладено з білої: " + owed.replace("), ", "); "))
+    for g in a.get("skipped", []):
+        lines.append(f"🎯 {g['n'][0].upper() + g['n'][1:]} {_n(g['sum'])} до ЗП не вистачає — відклади з зарплати.")
     return "\n".join(lines)
 
 
@@ -338,12 +361,19 @@ def _write_csv(rows):
 def sync(days=31):
     if not token():
         raise RuntimeError("немає mono_token у config.json")
+    try:
+        before = {c["id"]: c["balance"] for c in json.loads(INFO_PATH.read_text(encoding="utf-8"))["cards"]}
+    except Exception:
+        before = {}
     info = _get("/personal/client-info")
     safe = _save_info(info)
     rows = _read_csv()
     to = int(time.time())
     frm = to - min(days, 31) * 86400
     for c in safe["cards"]:
+        # a minute a request: a card whose balance did not move is asked next time it does
+        if rows and before.get(c["id"]) == c["balance"]:
+            continue
         items = _get(f"/personal/statement/{c['id']}/{frm}/{to}")
         kind = "чорна" if c["limit"] > 0 else "біла"
         for s in items:
@@ -395,16 +425,44 @@ SKIP_WORDS = (
     "Між своїми",
     "З білої картки",
     "З чорної картки",
+    "в рамках міграції рахунку",  # the bank moving the black card to a new account: in and out the same minute
 )
+TRANSFERS = {"4829", "6012"}  # money transfers, other banks
 
 
 def _is_daily_spend(r):
-    # daily spending: card debits except transfers to people, jars and own cards
-    a = float(r["amount"])
-    if a >= 0 or str(r.get("mcc")) == "4829":  # 4829: money transfers
+    # daily spending: card purchases (refunds count back) except transfers to people, jars and own cards
+    if str(r.get("mcc")) in TRANSFERS:
         return False
     d = r["description"]
     return not any(w.lower() in d.lower() for w in SKIP_WORDS)
+
+
+def _who(desc):
+    # "Від: Анастасія Новікова" and "Анастасія Н." are the same person: the first name and the surname's letter
+    words = desc.removeprefix("Від:").replace(",", " ").split()
+    return (words[0].lower(), words[1][0].lower()) if len(words) > 1 else None
+
+
+def _lent_back(r, rows):
+    # money sent to someone that came back from them in two weeks is a returned loan, not income
+    who, when = _who(r["description"]), dt.datetime.fromisoformat(r["time"])
+    return who is not None and any(
+        float(o["amount"]) == -float(r["amount"])
+        and _who(o["description"]) == who
+        and dt.timedelta(0) < when - dt.datetime.fromisoformat(o["time"]) < dt.timedelta(days=14)
+        for o in rows
+    )
+
+
+def _is_income(r, rows):
+    # money from outside: salary, the fop account, cash in, people; not own cards, jars, refunds or a loan back
+    if float(r["amount"]) <= 0 or str(r.get("mcc")) not in TRANSFERS:
+        return False
+    d = r["description"]
+    if "«" in d or any(w.lower() in d.lower() for w in SKIP_WORDS):  # «» is a jar
+        return False
+    return not _lent_back(r, rows)
 
 
 def summary(daily_budget=280, today_line=True):
@@ -501,13 +559,7 @@ def panel_data(daily_budget=280):
         "days": days,
         "avg7": round(sum(v for _, v in days[-7:]) / 7),
         "mspent": round(-sum(float(r["amount"]) for r in month if _is_daily_spend(r))),
-        "mincome": round(
-            sum(
-                float(r["amount"])
-                for r in month
-                if float(r["amount"]) > 0 and not any(w.lower() in r["description"].lower() for w in SKIP_WORDS)
-            )
-        ),
+        "mincome": round(sum(float(r["amount"]) for r in month if _is_income(r, rows))),
         "cats": sorted([[k, round(v)] for k, v in cats.items()], key=lambda x: -x[1]),
         "tips": insights(rows, daily_budget),
         "goods": goods(rows, daily_budget),
@@ -532,7 +584,7 @@ def _has(r, *words):
     return any(w.lower() in r["description"].lower() for w in words)
 
 
-def _filter(key):
+def _filter(key, rows=()):
     # single place that says which operations belong to a panel item, used by totals and details
     kind, _, arg = key.partition(":")
     spend = _is_daily_spend
@@ -547,12 +599,13 @@ def _filter(key):
         "saved": lambda r: float(r["amount"]) < 0 and _has(r, "На уник"),
         "bills": lambda r: float(r["amount"]) < 0 and _has(r, "Оплата Оренди", "Оплата Комуналки"),
         "over": spend,
+        "income": lambda r: _is_income(r, rows),
     }[kind]
 
 
 def _period(rows, key):
     today = dt.date.today()
-    if key.startswith("cat:"):
+    if key.startswith("cat:") or key == "income":
         return [r for r in rows if r["time"][:7] == today.strftime("%Y-%m")]
     return [r for r in rows if (today - dt.date.fromisoformat(r["time"][:10])).days < 30]
 
@@ -574,7 +627,7 @@ def insights(rows, daily_budget):
     total = _sum(rows, "over") or 1
     count = {}
     for r in _period(rows, "over"):
-        if _is_daily_spend(r) and int(r["mcc"] or 0) in SHOPS:
+        if _is_daily_spend(r) and float(r["amount"]) < 0 and int(r["mcc"] or 0) in SHOPS:
             count[r["description"]] = count.get(r["description"], 0) + 1
     out = []
 
@@ -675,7 +728,7 @@ def details(key, daily_budget=280):
             [f"{d[8:10]}.{d[5:7]}", f"на {v - daily_budget:.0f} грн понад бюджет", round(-v)] for d, v in days[::-1]
         ]
     else:
-        f = _filter(key)
+        f = _filter(key, rows)
         found = sorted((r for r in _period(rows, key) if f(r)), key=lambda r: r["time"], reverse=True)
         items = [
             [f"{r['time'][8:10]}.{r['time'][5:7]} {r['time'][11:16]}", r["description"][:40], round(float(r["amount"]))]
